@@ -30,20 +30,22 @@ The installer prefers a GitHub **release tarball** and verifies its **SHA-256** 
 
 Release assets are signed keylessly with **cosign (sigstore)**, bound to this repository's GitHub Actions OIDC identity:
 
-- Signing identity: `https://github.com/ph-commons/pse-edge-pp-cli/.github/workflows/release.yml@refs/tags/v[0-9]+(\.[0-9]+)*.*`
+- Signing identity: `https://github.com/ph-commons/pse-edge-pp-cli/.github/workflows/release.yml@refs/tags/v<semver>`
 - OIDC issuer: `https://token.actions.githubusercontent.com`
 
-When `cosign` is on the installer's `PATH`, `install.sh` verifies the checksums signature with exactly those constraints (and the release workflow self-verifies the same way before publishing). The signature is attached per artifact as `<artifact>.sigstore.json` (cosign v3 bundle).
+When `cosign` is on the installer's `PATH`, `install.sh` verifies the checksums signature with exactly those constraints (and the release workflow self-verifies the same way before promoting a draft release). The signature is attached per artifact as `<artifact>.sigstore.json` (cosign `--bundle` form). Verification needs **cosign ≥ 2.4.2** (bundle auto-detection); a signature that fails verification is always fatal — never silently downgraded.
 
 What this protects and does not:
 
 - **Protects:** transport/CDN tampering and any asset that was not produced by the release pipeline (a SHA-256-only check cannot detect a compromise that regenerated matching checksums). Signatures bind assets to the OIDC identity of the actual `release.yml` workflow run.
+- **Caveat:** an active attacker who can also intercept/block the signature fetch (not just tamper with the assets) can force the checksum-only fallback. This is closed by setting `PSE_EDGE_REQUIRE_COSIGN=1`, which makes any fallback a hard failure. Default posture protects against passive/incompetent tampering.
 - **Does not protect:** a fully compromised maintainer account that can push tags (that account can trigger valid workflow runs and produce valid signatures). Nor does it satisfy macOS Gatekeeper or Windows SmartScreen (no notarization / Authenticode).
 - **Transparency:** keyless signing publishes artifact digests to the public [Rekor transparency log](https://www.sigstore.dev/).
 
 Fallbacks and limits:
 
-- If `cosign` is not installed, or the release is unsigned (e.g. a manual `workflow_dispatch` release, whose ref is `refs/heads/<branch>` and does not match the tag identity), the installer **falls back to SHA-256 checksum-only** and prints an explicit warning. Set `PSE_EDGE_REQUIRE_COSIGN=1` to turn any such fallback into a hard failure.
+- If `cosign` is not installed, the installer falls back to SHA-256 checksum-only and prints an explicit warning. Set `PSE_EDGE_REQUIRE_COSIGN=1` to turn this into a hard failure.
+- Releases are created by tag push only (`release.yml`); manual (`workflow_dispatch`) releases are intentionally unsupported because their branch identity cannot match the tag identity `install.sh` requires.
 - The `curl | bash` fetch of `install.sh` itself remains trust-on-first-use on the raw GitHub URL.
 
 An MCP server binary is also available for IDE/desktop agents:

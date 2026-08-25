@@ -57,7 +57,7 @@ verify_tarball() {
 
 # verify_checksums_signature SUMS_FILE BASE_URL TMP_DIR — verify the release
 # checksums are signed by the repo's keyless cosign identity (GitHub Actions
-# OIDC, release workflow @ refs/tags/v[0-9]+...). Falls back to checksum-only
+# OIDC, release workflow @ refs/tags/v<semver>). Falls back to checksum-only
 # with an explicit warning when cosign is absent or the signature is
 # unavailable; PSE_EDGE_REQUIRE_COSIGN=1 turns that fallback into a hard
 # failure. Runs BEFORE the SHA-256 tarball check so a tampered or
@@ -83,7 +83,7 @@ verify_checksums_signature() {
   if ! cosign verify-blob \
        --bundle "$tmp/$bundle" \
        "$sums_file" \
-       --certificate-identity-regexp 'https://github.com/ph-commons/pse-edge-pp-cli/.github/workflows/release.yml@refs/tags/v[0-9]+(\.[0-9]+)*.*' \
+       --certificate-identity-regexp 'https://github.com/ph-commons/pse-edge-pp-cli/.github/workflows/release.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' \
        --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' >/dev/null 2>&1; then
     die "cosign could not verify the release signature for $bundle — refusing to install (tampered or wrong-identity release)"
   fi
