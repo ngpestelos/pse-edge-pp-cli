@@ -53,9 +53,10 @@ sboms:
       - "--enrich"
       - "all"
 
-# Keyless cosign signing (sigstore, GitHub Actions OIDC). cosign v3 bundle
-# form: each artifact produces <artifact>.sigstore.json. The signature file
-# is declared via `signature:` so goreleaser tracks and uploads it.
+# Keyless cosign signing (sigstore, GitHub Actions OIDC). cosign bundle
+# form (works on cosign >= 2.4.2 and v3): each artifact produces
+# <artifact>.sigstore.json. The signature file is declared via `signature:`
+# so goreleaser tracks and uploads it.
 signs:
   - id: checksums
     cmd: cosign

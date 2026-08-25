@@ -121,6 +121,9 @@ if [ -n "$arch" ] && command -v curl >/dev/null 2>&1; then
 fi
 
 if [ "$install_ok" != true ]; then
+  if [ "${PSE_EDGE_REQUIRE_COSIGN:-0}" = "1" ]; then
+    die "PSE_EDGE_REQUIRE_COSIGN=1 but the signed prebuilt release could not be installed — refusing to fall back to go install (different trust root)"
+  fi
   if ! command -v go >/dev/null 2>&1; then
     die "go not on PATH. Install Go 1.21+ (https://go.dev/dl/) or download a release tarball manually."
   fi
