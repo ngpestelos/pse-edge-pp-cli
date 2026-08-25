@@ -39,3 +39,53 @@ archives:
         formats: [zip]
 checksum:
   name_template: checksums.txt
+
+# SBOMs (provenance artifacts) generated per archive via syft (provisioned
+# by goreleaser). Uses the goreleaser v2 default args so a real file is
+# produced: spdx-json=$document -> {{ .ArtifactName }}.sbom.json.
+sboms:
+  - artifacts: archive
+    cmd: syft
+    args:
+      - "$artifact"
+      - "--output"
+      - "spdx-json=$document"
+      - "--enrich"
+      - "all"
+
+# Keyless cosign signing (sigstore, GitHub Actions OIDC). cosign v3 bundle
+# form: each artifact produces <artifact>.sigstore.json. The signature file
+# is declared via `signature:` so goreleaser tracks and uploads it.
+signs:
+  - id: checksums
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+    artifacts: checksum
+    output: true
+
+  - id: archives
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+    artifacts: archive
+    output: true
+
+  - id: sboms
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+    artifacts: sbom
+    output: true

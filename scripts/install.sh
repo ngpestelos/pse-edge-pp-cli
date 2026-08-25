@@ -55,6 +55,41 @@ verify_tarball() {
   log "Verified SHA-256 $tarball"
 }
 
+# verify_checksums_signature SUMS_FILE BASE_URL TMP_DIR — verify the release
+# checksums are signed by the repo's keyless cosign identity (GitHub Actions
+# OIDC, release workflow @ refs/tags/v[0-9]+...). Falls back to checksum-only
+# with an explicit warning when cosign is absent or the signature is
+# unavailable; PSE_EDGE_REQUIRE_COSIGN=1 turns that fallback into a hard
+# failure. Runs BEFORE the SHA-256 tarball check so a tampered or
+# wrong-identity release is refused rather than merely checksum-matched.
+verify_checksums_signature() {
+  local sums_file="$1" base="$2" tmp="$3" bundle bundle_url
+  if ! command -v cosign >/dev/null 2>&1; then
+    if [ "${PSE_EDGE_REQUIRE_COSIGN:-0}" = "1" ]; then
+      die "PSE_EDGE_REQUIRE_COSIGN=1 but cosign is not on PATH — refusing to install without provenance verification"
+    fi
+    warn "cosign not found — verifying SHA-256 only (transport integrity, not release provenance)"
+    return 0
+  fi
+  bundle="$(basename "$sums_file").sigstore.json"
+  bundle_url="${base}/${bundle}"
+  if ! curl -fsSL "$bundle_url" -o "$tmp/$bundle" 2>/dev/null; then
+    if [ "${PSE_EDGE_REQUIRE_COSIGN:-0}" = "1" ]; then
+      die "PSE_EDGE_REQUIRE_COSIGN=1 but release signature $bundle_url could not be fetched — refusing to install"
+    fi
+    warn "release signature ($bundle) unavailable (manual/unsigned release or transient fetch failure) — verifying SHA-256 only"
+    return 0
+  fi
+  if ! cosign verify-blob \
+       --bundle "$tmp/$bundle" \
+       "$sums_file" \
+       --certificate-identity-regexp 'https://github.com/ph-commons/pse-edge-pp-cli/.github/workflows/release.yml@refs/tags/v[0-9]+(\.[0-9]+)*.*' \
+       --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' >/dev/null 2>&1; then
+    die "cosign could not verify the release signature for $bundle — refusing to install (tampered or wrong-identity release)"
+  fi
+  log "Verified cosign signature (GitHub Actions OIDC identity) for release checksums"
+}
+
 install_ok=false
 if [ -n "$arch" ] && command -v curl >/dev/null 2>&1; then
   ver="$(curl -fsSL "https://api.github.com/repos/${OWNER_REPO}/releases/latest" 2>/dev/null \
@@ -69,6 +104,7 @@ if [ -n "$arch" ] && command -v curl >/dev/null 2>&1; then
     trap 'rm -rf "$tmp"' EXIT
     if curl -fsSL "$url" -o "$tmp/$tarball" 2>/dev/null \
       && curl -fsSL "$sums_url" -o "$tmp/checksums.txt" 2>/dev/null; then
+      verify_checksums_signature "$tmp/checksums.txt" "$base" "$tmp"
       verify_tarball "$tmp" "$tarball" "$tmp/checksums.txt"
       if tar -xzf "$tmp/$tarball" -C "$GOBIN_DIR" 2>/dev/null; then
         chmod +x "$GOBIN_DIR/pse-edge-pp-cli" "$GOBIN_DIR/pse-edge-pp-mcp" 2>/dev/null || true
