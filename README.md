@@ -173,9 +173,19 @@ Lists the year's disclosures and feeds the local index behind deadlines; `--keyw
 
 ```bash
 pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json
+pse-edge-pp-cli filings latest-body GTCAP --json
 ```
 
 (`disclosures view --edge-no` is the generated raw-HTML path; prefer `filings get` when you need structured company/title/attachment fields.)
+
+Which commands carry `file_id` / `document_file_id`:
+
+| Command | `file_id` / `document_file_id` |
+|---|---|
+| `filings SYMBOL` | no (index only) |
+| `filings get --edge-no` | yes |
+| `filings latest-body SYMBOL` | yes + body |
+| `disclosures document --file-id` | yes (input + body) |
 
 ### Relative strength question
 

@@ -96,8 +96,12 @@ func newFilingsCmd(flags *rootFlags) *cobra.Command {
 		Short: "Search PSE Edge disclosures by ticker (or --all), upserting headers into the local pse_disclosures index",
 		Long: `Use this command to list a company's disclosures (17-Q/17-A, dividend
 declarations, material information, ...) by ticker symbol, or market-wide
-with --all. Do NOT use it for computed filing-deadline status (use
-'deadlines') or to read a filing's body (use 'disclosures document').
+with --all. Search is index-only: rows carry edge_no, not file_id.
+
+Do NOT use search for computed filing-deadline status (use 'deadlines') or
+to read a filing body. The one-shot for newest file_id + document body is:
+
+  pse-edge-pp-cli filings latest-body SYMBOL --json
 
 The symbol resolves to companyId via the local registry (live autocomplete
 fallback); the search POSTs announcements/search.ax (form-urlencoded) and
@@ -121,7 +125,8 @@ offline joins (the 'deadlines' command reads it).`,
 		Example: `  pse-edge-pp-cli filings GTCAP --from-date 01-01-2026 --json
   pse-edge-pp-cli filings GTCAP --template "Declaration of Cash Dividends" --json
   pse-edge-pp-cli filings --all --limit 50 --json
-  pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json`,
+  pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json
+  pse-edge-pp-cli filings latest-body GTCAP --json`,
 		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 && !allCompanies {
@@ -273,6 +278,7 @@ offline joins (the 'deadlines' command reads it).`,
 	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite database file path (default: resolved data directory data.db)")
 
 	cmd.AddCommand(newFilingsGetCmd(flags))
+	cmd.AddCommand(newFilingsLatestBodyCmd(flags))
 	return cmd
 }
 
@@ -368,7 +374,7 @@ search but present at:
 
 This command does not depend on the search index. For full document HTML
 use 'disclosures document' / downloadHtml.do after reading attachment file_ids.`,
-		Example: `  pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json`,
+		Example:     `  pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json`,
 		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			edgeNo = strings.TrimSpace(edgeNo)
