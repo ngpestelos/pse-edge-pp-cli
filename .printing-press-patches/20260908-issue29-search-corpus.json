@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "id": "20260908-issue29-search-corpus",
+  "applied_at": "2026-09-08",
+  "base_run_id": "20260727-155656-a8a699bf",
+  "base_printing_press_version": "4.29.0",
+  "summary": "Filings search must identify its announcements-only corpus and preserve warnings in agent JSON even when the search scan is complete.",
+  "reason": "PSE EDGE search can omit disclosures available through the viewer. Preserve bounded-scan documentation and direct edge_no recovery so empty or complete search results cannot imply corpus completeness. This is PSE-specific porcelain behavior.",
+  "files": [
+    "internal/cli/disclosures_filings.go",
+    "internal/cli/disclosures_filings_test.go",
+    "README.md"
+  ],
+  "validated_outcome": "Agent serialization covers full, empty, capped, and limited searches; direct lookup requests only openDiscViewer.do."
+}

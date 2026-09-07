@@ -3,6 +3,11 @@
 package cli
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"strings"
 	"testing"
 )
@@ -143,5 +148,106 @@ func TestFilingsGetAgentKeepsAttachments(t *testing.T) {
 	}
 	if !strings.Contains(s, "document_file_id") {
 		t.Fatalf("compact stripped document_file_id: %s", s)
+	}
+}
+
+func TestFilingsSearchAgentCorpus(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		rows, pages, total int
+		complete           bool
+	}{
+		{"full", 1, 1, 1, true}, {"empty", 0, 1, 0, true},
+		{"capped", 1, 5, 250, false}, {"empty capped", 0, 5, 250, false},
+		{"limited", 20, 1, 50, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := filingsOut{Rows: make([]filingRow, tc.rows), ScannedPages: 1, TotalPages: tc.pages, TotalCount: tc.total, Limit: 20, MaxScanPages: 1}
+			finalizeFilingsOut(&out, false)
+			var buf strings.Builder
+			if err := printJSONFiltered(&buf, out, &rootFlags{agent: true, asJSON: true, compact: true}); err != nil {
+				t.Fatal(err)
+			}
+			var got struct {
+				Corpus   string
+				Warnings []string
+				Complete bool
+				Note     string
+			}
+			if err := json.Unmarshal([]byte(buf.String()), &struct {
+				Results any `json:"results"`
+			}{Results: &got}); err != nil {
+				t.Fatal(err)
+			}
+			if got.Corpus != "announcements_search_only" {
+				t.Errorf("corpus = %q", got.Corpus)
+			}
+			if len(got.Warnings) == 0 || !strings.Contains(got.Warnings[0], "not an authoritative complete corpus") {
+				t.Errorf("warnings = %v", got.Warnings)
+			}
+			if got.Complete != tc.complete {
+				t.Errorf("complete = %v, want %v", got.Complete, tc.complete)
+			}
+			if tc.rows == 0 && !strings.Contains(got.Note, "filings get --edge-no") {
+				t.Errorf("empty recovery note = %q", got.Note)
+			}
+		})
+	}
+}
+
+func TestFilingsSearchHelpCorpus(t *testing.T) {
+	cmd := RootCmd()
+	cmd.SetArgs([]string{"filings", "--help"})
+	var buf strings.Builder
+	cmd.SetOut(&buf)
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"#search-is-not-the-disclosure-corpus", "announcements_search_only", "90 calendar days", "150", "total_count", "filings get --edge-no"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("help missing %q", want)
+		}
+	}
+}
+
+type filingsTransport func(*http.Request) (*http.Response, error)
+
+func (f filingsTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestFilingsGetIndependentOfSearch(t *testing.T) {
+	fixture, err := os.ReadFile("../pseedge/testdata/disclosure_viewer_lode_17q.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	requests := 0
+	edge := "2bc053ab3b1339fb64d70b69f0a3140b"
+	http.DefaultTransport = filingsTransport(func(r *http.Request) (*http.Response, error) {
+		requests++
+		if r.Method != "GET" || r.URL.Path != "/openDiscViewer.do" || r.URL.Query().Get("edge_no") != edge {
+			return nil, fmt.Errorf("unexpected request: %s %s", r.Method, r.URL)
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(fixture))), Request: r}, nil
+	})
+	cmd := RootCmd()
+	cmd.SetArgs([]string{"filings", "get", "--edge-no", edge, "--agent", "--no-learn"})
+	var buf strings.Builder
+	cmd.SetOut(&buf)
+	cmd.SetErr(io.Discard)
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Title          string
+		DocumentFileID string `json:"document_file_id"`
+	}
+	if err := json.Unmarshal([]byte(buf.String()), &struct {
+		Results any `json:"results"`
+	}{Results: &got}); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || got.Title != "Quarterly Report" || got.DocumentFileID != "1946761" {
+		t.Fatalf("requests=%d output=%s", requests, buf.String())
 	}
 }
