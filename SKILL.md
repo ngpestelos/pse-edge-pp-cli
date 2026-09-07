@@ -114,7 +114,7 @@ pse-edge-pp-cli drift AT --since 90d --agent
 
 `--agent` → JSON + compact + no prompts. Prefer `--select` for small payloads.
 
-Generated resource commands wrap `{meta, results}`; novel local-store commands (`history`, `breadth`, `movers`, `stale`, `quote`, …) emit bare JSON with inline source/as_of/stale.
+Generated resource commands wrap `{meta, results}`; novel local-store commands (`history`, `breadth`, `movers`, `stale`, `quote`, …) emit bare JSON with inline source/as_of/stale. Exception: `history --json`/`--agent` emit a coverage wrapper (`bars`, `coverage{first,last,gaps}`, `session_last_completed`, `stale`, `sync_required`, plus `calendar_coverage` outside known holiday years) so "no data" and "not synced" are distinguishable; `--csv`/`--plain` and default output still render rows/table.
 
 ## Paths
 

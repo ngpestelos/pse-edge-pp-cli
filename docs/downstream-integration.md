@@ -58,7 +58,7 @@ Live `export companies` remains the **network** directory scrape (generated path
 
 **Not implemented in this issue:** `--fail-on-partial`, `--minimum-coverage`, `--manifest out.json`.
 
-**Workaround:** parse stderr/JSON event stream from sync; use `stale --json` and `export eod` row counts as coverage checks. File a follow-up if you need exit-code gates in CI.
+**Workaround:** parse stderr/JSON event stream from sync; use `stale --json` and `export eod` row counts as coverage checks. Since #32, `history --json` also exposes machine-readable `coverage{first,last,gaps}` + `session_last_completed` + `stale` + `sync_required` inline. File a follow-up if you still need exit-code gates in CI.
 
 ## 4. Volume on `pse_eod_prices`
 
