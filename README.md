@@ -261,7 +261,7 @@ Listed-company registry: directory, lookup, and profiles
 
 Corporate disclosures: search, view, and read filing documents
 
-- **`pse-edge-pp-cli disclosures document`** - Full disclosure document content as server-rendered HTML (use this, never the broken downloadFile.do PDF path)
+- **`pse-edge-pp-cli disclosures document`** - Full disclosure document body for `--file-id` (HTML or PDF; CLI sniffs `%PDF-` magic bytes). JSON `results` is `{file_id, content_type, text, byte_length}`; PDF is not piped as raw text. Still uses `downloadHtml.do`, never the broken `downloadFile.do` path.
 - **`pse-edge-pp-cli disclosures search`** - Search disclosures by company, template, and date range (server-side; the keyword parameter is IGNORED upstream — use the filings command for client-side keyword filtering). Upstream expects a form-urlencoded body, not JSON.
 - **`pse-edge-pp-cli disclosures view`** - Disclosure viewer wrapper for one filing
 

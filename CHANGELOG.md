@@ -15,6 +15,7 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Fixed
 
+- `disclosures document --file-id` now returns a structured body (`file_id`, `content_type`, `text`, `byte_length`) for HTML and PDF attachments instead of `{ "results": {} }` with exit 0. PDF is sniffed from `%PDF-` magic bytes; empty or unusable bodies exit non-zero ([#28](https://github.com/ph-commons/pse-edge-pp-cli/issues/28)).
 - Data race in the learn loop's query-synonym registry (`RegisterQuerySynonyms`) that could crash concurrent installs with `fatal error: concurrent map writes`. Registration and reads are now guarded by a package-level `sync.RWMutex`, with a pinned `-race` regression test. CI now runs `go test -race ./...`.
 
 ### Security
