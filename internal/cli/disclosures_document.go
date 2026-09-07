@@ -16,7 +16,7 @@ func newDisclosuresDocumentCmd(flags *rootFlags) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:         "document",
-		Short:       "Full disclosure document content as server-rendered HTML (use this, never the broken downloadFile.do PDF path)",
+		Short:       "Full disclosure document body (HTML or PDF; CLI sniffs magic bytes; PDF is not piped as raw text)",
 		Example:     "  pse-edge-pp-cli disclosures document --file-id 1948180",
 		Annotations: map[string]string{"pp:endpoint": "disclosures.document", "pp:method": "GET", "pp:path": "/downloadHtml.do", "mcp:read-only": "true", "pp:happy-args": "--file-id=1948180"},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -46,27 +46,21 @@ func newDisclosuresDocumentCmd(flags *rootFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			htmlRequestParams := map[string]string{}
-			if flagFileId != "" {
-				htmlRequestParams["file_id"] = formatCLIParamValue(flagFileId)
-			}
 			params := map[string]string{}
 			if flagFileId != "" {
 				params["file_id"] = formatCLIParamValue(flagFileId)
 			}
-			data, prov, err := resolveReadWithStrategyResponsePathAndJSONGuard(cmd.Context(), c, flags, "auto", "disclosures", false, path, params, nil, "", false, cmd.ErrOrStderr())
+			// Fetch the attachment bytes directly. resolveReadWithStrategy
+			// write-through-caches this as resourceType "disclosures" and
+			// warns "no extractable ID field" because PDF/HTML bodies are
+			// not search rows.
+			data, err := c.GetWithHeaders(cmd.Context(), path, params, nil)
 			if err != nil {
 				return classifyAPIError(err, flags)
 			}
+			prov := DataProvenance{Source: "live"}
 			if !flags.dryRun {
-				data, err = extractHTMLResponse(data, htmlExtractionOptions{
-					Mode:           "page",
-					BaseURL:        htmlExtractionRequestURL(c.BaseURL, path, htmlRequestParams),
-					LinkPrefixes:   []string{},
-					Limit:          0,
-					ScriptSelector: "script#__NEXT_DATA__",
-					JSONPath:       "",
-				})
+				data, err = decodeDisclosureDocument(flagFileId, data)
 				if err != nil {
 					return err
 				}
