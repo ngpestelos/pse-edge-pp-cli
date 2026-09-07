@@ -74,7 +74,7 @@ These capabilities aren't available in any other tool for this API.
 ### Local history that compounds
 - **`history`** — Query daily OHLC/value history for any ticker or the PSEi from the local store — data no free PSE API serves.
 
-  _Reach for this when a question spans more than the current session; every row carries source and as-of trading date._
+  _Reach for this when a question spans more than the current session; every row carries source and as-of trading date. `--json`/`--agent` emit a coverage wrapper (`bars` + `coverage{first,last,gaps}` + `session_last_completed` + `stale` + `sync_required`, plus `calendar_coverage` outside known holiday years) so automation can tell "no data" from "not synced"._
 
   ```bash
   pse-edge-pp-cli history AT --since 30d --agent
@@ -193,9 +193,19 @@ This lookup does not depend on the search index:
 
 ```bash
 pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json
+pse-edge-pp-cli filings latest-body GTCAP --json
 ```
 
 (`disclosures view --edge-no` is the generated raw-HTML path; prefer `filings get` when you need structured company/title/attachment fields.)
+
+Which commands carry `file_id` / `document_file_id`:
+
+| Command | `file_id` / `document_file_id` |
+|---|---|
+| `filings SYMBOL` | no (index only) |
+| `filings get --edge-no` | yes |
+| `filings latest-body SYMBOL` | yes + body |
+| `disclosures document --file-id` | yes (input + body) |
 
 ### Relative strength question
 

@@ -13,6 +13,14 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Added
+
+- `filings latest-body SYMBOL` — one-shot newest search-row `file_id` plus `downloadHtml.do` document body. `filings SYMBOL` stays index-only (no `file_id` on rows); `filings get --edge-no` still returns viewer `document_file_id` / attachment ids ([#31](https://github.com/ph-commons/pse-edge-pp-cli/issues/31)).
+
+### Changed
+
+- **Breaking:** `history --json` (and `--agent`, nested under the usual `{meta, results}` envelope) now emit a coverage wrapper instead of a bare array: `{"bars": [...], "coverage": {"first","last","gaps"}, "session_last_completed", "stale", "sync_required"}`. The coverage/stale signal lets automation distinguish "no data" from "not synced" — `coverage.last < session_last_completed` means the local series is stale; `sync_required: true` means the store has never been synced for that symbol. `coverage.gaps` lists days the local best-effort calendar expects to trade within the series span that carry no bar (null when the series is empty or the window is outside the calendar's known holiday years, in which case `calendar_coverage` is surfaced); unscheduled closures and suspensions appear as gaps, trailing unsynced sessions do not. `--csv`/`--plain` and the default human output continue to render the bars as rows/table (issue #32).
+
 ### Fixed
 
 - `filings` adds `corpus: "announcements_search_only"` to search JSON, preserves corpus warnings under `--agent`, and documents scan bounds and direct viewer recovery for empty searches ([#29](https://github.com/ph-commons/pse-edge-pp-cli/issues/29)).

@@ -70,6 +70,7 @@ MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp
 | Breadth series | `pse-edge-pp-cli breadth --since 30d --json` |
 | Filings (search index) | `pse-edge-pp-cli filings AT --json` |
 | Filing by edge_no (viewer) | `pse-edge-pp-cli filings get --edge-no <hash> --json` |
+| Latest filing file_id + body | `pse-edge-pp-cli filings latest-body AT --json` |
 | Export local EOD/index | `pse-edge-pp-cli export eod\|index --from YYYY-MM-DD --format jsonl` |
 | 17-Q/17-A deadlines | `pse-edge-pp-cli deadlines AT --json` |
 | Typed financials | `pse-edge-pp-cli financials AT --json` |
@@ -85,7 +86,7 @@ MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp
 - Gate EOD on `session` — blank change fields on non-trading days are **states**, not zeros.
 - `history` / `drift` / `movers` / `breadth` / `deadlines` need `sync market` when the local store is empty.
 - Announcements search: server ignores free-text `keyword` — CLI filters titles client-side.
-- Filings search is **not** an authoritative complete corpus (`complete` is relative to `announcements/search.ax` only). Prefer `filings get --edge-no` when a viewer URL is known.
+- Filings search is **not** an authoritative complete corpus (`complete` is relative to `announcements/search.ax` only). Prefer `filings get --edge-no` when a viewer URL is known. Search rows have `edge_no`, not `file_id`; use `filings latest-body SYMBOL` for newest `file_id` + body.
 - Phisix official API gone 2023-12-04; api3 is convenience overlay, not first-party.
 
 ## Recipes
@@ -103,6 +104,7 @@ pse-edge-pp-cli filings GTCAP --from-date 01-01-2026 --json
 # Always read warnings/complete/freshness_gap_days — search is not a complete corpus.
 # Known edge_no missing from search:
 pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json
+pse-edge-pp-cli filings latest-body GTCAP --json
 
 # Relative strength
 pse-edge-pp-cli drift AT --since 90d --agent
@@ -112,7 +114,7 @@ pse-edge-pp-cli drift AT --since 90d --agent
 
 `--agent` → JSON + compact + no prompts. Prefer `--select` for small payloads.
 
-Generated resource commands wrap `{meta, results}`; novel local-store commands (`history`, `breadth`, `movers`, `stale`, `quote`, …) emit bare JSON with inline source/as_of/stale.
+Generated resource commands wrap `{meta, results}`; novel local-store commands (`history`, `breadth`, `movers`, `stale`, `quote`, …) emit bare JSON with inline source/as_of/stale. Exception: `history --json`/`--agent` emit a coverage wrapper (`bars`, `coverage{first,last,gaps}`, `session_last_completed`, `stale`, `sync_required`, plus `calendar_coverage` outside known holiday years) so "no data" and "not synced" are distinguishable; `--csv`/`--plain` and default output still render rows/table.
 
 ## Paths
 

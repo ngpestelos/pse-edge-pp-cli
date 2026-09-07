@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -33,8 +34,25 @@ import (
 // client and its limiter). One request/second start rate, adaptive ceiling.
 var disclosureLimiter = cliutil.NewAdaptiveLimiterAuto(1)
 
-// DisclosureSearchURL is the announcements search endpoint (form POST, no auth).
+// DisclosureSearchURL is the production announcements search endpoint
+// (form POST, no auth). Fetchers honor PSE_EDGE_BASE_URL when set.
 const DisclosureSearchURL = "https://edge.pse.com.ph/announcements/search.ax"
+
+const productionEdgeOrigin = "https://edge.pse.com.ph"
+
+// edgeOrigin is the EDGE host used by hand-built fetchers. Production
+// default is unchanged; tests point httptest via PSE_EDGE_BASE_URL
+// (trim trailing slash, then append the path).
+func edgeOrigin() string {
+	if v := strings.TrimRight(strings.TrimSpace(os.Getenv("PSE_EDGE_BASE_URL")), "/"); v != "" {
+		return v
+	}
+	return productionEdgeOrigin
+}
+
+func disclosureSearchEndpoint() string {
+	return edgeOrigin() + "/announcements/search.ax"
+}
 
 // disclosureMaxBody caps how much of a response is read (pages are ~14KB;
 // the cap only guards against a pathological upstream).
@@ -163,7 +181,8 @@ func FetchDisclosurePage(ctx context.Context, hc *http.Client, search Disclosure
 		"toDate":    {search.ToDate},
 		"pageNo":    {strconv.Itoa(pageNo)},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, DisclosureSearchURL, strings.NewReader(form.Encode()))
+	endpoint := disclosureSearchEndpoint()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("pse-edge announcements/search.ax: building request: %w", err)
 	}
@@ -189,7 +208,7 @@ func FetchDisclosurePage(ctx context.Context, hc *http.Client, search Disclosure
 		if len(bodyPreview) > 200 {
 			bodyPreview = bodyPreview[:200]
 		}
-		return nil, &cliutil.RateLimitError{URL: DisclosureSearchURL, RetryAfter: retryAfter, Body: bodyPreview}
+		return nil, &cliutil.RateLimitError{URL: endpoint, RetryAfter: retryAfter, Body: bodyPreview}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("pse-edge announcements/search.ax page %d: HTTP %d", pageNo, resp.StatusCode)

@@ -69,8 +69,19 @@ date; weekends and holidays are naturally absent (the store only holds
 completed trading sessions).
 
 The window defaults to --since 30d ending at the last completed PH trading
-day; --from/--to (YYYY-MM-DD) override it. A range with no local rows
-prints [] plus a stderr note stating actual local coverage.`,
+day; --from/--to (YYYY-MM-DD) override it.
+
+--json/--agent emit a wrapper object so automation can tell "no data" from
+"not synced": {"bars": [...], "coverage": {"first","last","gaps"},
+"session_last_completed", "stale", "sync_required"}. coverage.gaps lists
+days the local best-effort calendar expects to trade within the series span
+that carry no bar — unscheduled closures and suspensions appear as gaps;
+trailing unsynced sessions do not. gaps is null when the requested window is
+outside the calendar's known holiday years (calendar_coverage: {min_year,
+max_year, covered:false} is then surfaced) or when the series has no rows. A
+never-synced store reports "sync_required": true. --csv/--plain render the
+bars array as rows. A range with no local rows prints an empty bars array
+plus a stderr note stating actual local coverage.`,
 		Example: `  pse-edge-pp-cli history AT --since 30d --json
   pse-edge-pp-cli history PSEI --since 30d --json
   pse-edge-pp-cli history AT --from 2026-06-01 --to 2026-06-30 --json`,
@@ -103,11 +114,18 @@ prints [] plus a stderr note stating actual local coverage.`,
 			}
 
 			// Missing-mirror guard: no database file means nothing has ever
-			// been synced. Hint on stderr, empty result on stdout (history's
-			// success shape is an array, so [] stays the empty result here).
+			// been synced. Emit the uniform wrapper with empty coverage and
+			// sync_required so "not synced" is machine-readable, hint on
+			// stderr, exit 0 (the never-synced shape stays exit 0).
 			var missing bool
 			if dbPath, missing = missingMirrorGuard(cmd, dbPath); missing {
-				return printJSONFiltered(cmd.OutOrStdout(), []historyRow{}, flags)
+				return emitHistoryResult(cmd.OutOrStdout(), historyResult{
+					Bars:                 []historyRow{},
+					Coverage:             historyCoverage{First: nil, Last: nil, Gaps: nil},
+					SessionLastCompleted: asOf,
+					Stale:                true,
+					SyncRequired:         true,
+				}, flags)
 			}
 
 			db, err := store.OpenReadOnlyContext(cmd.Context(), dbPath)
@@ -122,11 +140,18 @@ prints [] plus a stderr note stating actual local coverage.`,
 			}
 
 			resource := "pse_eod_prices"
+			keyCol := "symbol"
 			if isIndex {
 				resource = "pse_index_snapshots"
+				keyCol = "index_code"
 			}
 			hintIfUnsynced(cmd, db, resource)
 			hintIfStale(cmd, db, resource, 72*time.Hour)
+
+			cov, covOK, calCov, err := historyCoverageFor(cmd, db, resource, keyCol, sym, from, to)
+			if err != nil {
+				return err
+			}
 
 			if isIndex {
 				rows, err := historyIndexRows(cmd, db, sym, from, to, asOf)
@@ -134,9 +159,25 @@ prints [] plus a stderr note stating actual local coverage.`,
 					return err
 				}
 				if len(rows) == 0 {
-					historyEmptyNote(cmd, db, `SELECT MIN(trading_date), MAX(trading_date), COUNT(*) FROM pse_index_snapshots WHERE index_code = ?`, sym, from, to)
+					if covOK {
+						historyEmptyNote(cmd, db, `SELECT MIN(trading_date), MAX(trading_date), COUNT(*) FROM pse_index_snapshots WHERE index_code = ?`, sym, from, to)
+					}
+					return emitHistoryResult(cmd.OutOrStdout(), historyResult{
+						Bars:                 []historyRow{},
+						Coverage:             cov,
+						SessionLastCompleted: asOf,
+						Stale:                covOK && cov.Last != nil && *cov.Last < asOf,
+						SyncRequired:         !covOK,
+						CalendarCoverage:     calCov,
+					}, flags)
 				}
-				return printJSONFiltered(cmd.OutOrStdout(), rows, flags)
+				return emitHistoryResult(cmd.OutOrStdout(), historyResult{
+					Bars:                 rows,
+					Coverage:             cov,
+					SessionLastCompleted: asOf,
+					Stale:                rows[0].Stale,
+					CalendarCoverage:     calCov,
+				}, flags)
 			}
 
 			rows, err := historySymbolRows(cmd, db, sym, from, to, asOf)
@@ -144,24 +185,46 @@ prints [] plus a stderr note stating actual local coverage.`,
 				return err
 			}
 			if len(rows) == 0 {
-				// Distinguish "symbol never synced" (typed not-found with a
-				// sync hint) from "synced but no rows in this range" ([] +
-				// coverage note — never fabricated rows).
-				var total int
-				var minD, maxD sql.NullString
-				scanErr := db.DB().QueryRowContext(cmd.Context(),
-					`SELECT COUNT(*), MIN(trading_date), MAX(trading_date) FROM pse_eod_prices WHERE symbol = ?`, sym,
-				).Scan(&total, &minD, &maxD)
-				if scanErr != nil && !syncHintMissingTable(scanErr) {
-					return scanErr
-				}
-				if total == 0 {
+				if !covOK {
+					// Distinguish "symbol never synced" (typed not-found with a
+					// sync hint) from "synced but no rows in this range" ([] +
+					// coverage note — never fabricated rows). Emit the wrapper
+					// on stdout, then signal exit 3 via the typed error.
+					if err := emitHistoryResult(cmd.OutOrStdout(), historyResult{
+						Bars:                 []historyRow{},
+						Coverage:             historyCoverage{First: nil, Last: nil, Gaps: nil},
+						SessionLastCompleted: asOf,
+						Stale:                true,
+						SyncRequired:         true,
+					}, flags); err != nil {
+						return err
+					}
 					return notFoundErr(fmt.Errorf("no local data for symbol %q\nhint: run 'pse-edge-pp-cli sync market --symbols %s' to sync it first", sym, sym))
 				}
+				firstStr, lastStr := "", ""
+				if cov.First != nil {
+					firstStr = *cov.First
+				}
+				if cov.Last != nil {
+					lastStr = *cov.Last
+				}
 				fmt.Fprintf(cmd.ErrOrStderr(), "note: no local rows for %s in %s..%s (local coverage: %s..%s, %d rows). Not fabricating data.\n",
-					sym, from, to, minD.String, maxD.String, total)
+					sym, from, to, firstStr, lastStr, cov.Total)
+				return emitHistoryResult(cmd.OutOrStdout(), historyResult{
+					Bars:                 []historyRow{},
+					Coverage:             cov,
+					SessionLastCompleted: asOf,
+					Stale:                cov.Last != nil && *cov.Last < asOf,
+					CalendarCoverage:     calCov,
+				}, flags)
 			}
-			return printJSONFiltered(cmd.OutOrStdout(), rows, flags)
+			return emitHistoryResult(cmd.OutOrStdout(), historyResult{
+				Bars:                 rows,
+				Coverage:             cov,
+				SessionLastCompleted: asOf,
+				Stale:                rows[0].Stale,
+				CalendarCoverage:     calCov,
+			}, flags)
 		},
 	}
 	cmd.Flags().StringVar(&flagSince, "since", "30d", "Window ending at the last completed trading day (e.g. 30d, 12w)")
