@@ -196,15 +196,16 @@ var reservedStructuredArgs = map[string]bool{
 // malicious config file, or change the delivery target, all of which sit
 // outside the per-command surface the agent is supposed to be calling.
 var blockedRootFlags = map[string]bool{
-	"base-url": true,
-	"client":   true,
-	"config":   true,
-	"db":       true, // arbitrary store path + DSN injection surface (issue #13)
-	"deliver":  true,
-	"home":     true,
-	"insecure": true,
-	"profile":  true,
-	"token":    true,
+	"base-url":                      true,
+	"client":                        true,
+	"config":                        true,
+	"db":                            true, // arbitrary store path + DSN injection surface (issue #13)
+	"deliver":                       true,
+	"deliver-webhook-allow-private": true, // SSRF guard opt-out (issue #25); inert while deliver is blocked, but must not be settable
+	"home":                          true,
+	"insecure":                      true,
+	"profile":                       true,
+	"token":                         true,
 }
 
 func cliArgsFromMCP(args map[string]any, blocked map[string]bool) []string {

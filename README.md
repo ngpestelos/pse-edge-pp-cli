@@ -173,9 +173,19 @@ Lists the year's disclosures and feeds the local index behind deadlines; `--keyw
 
 ```bash
 pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json
+pse-edge-pp-cli filings latest-body GTCAP --json
 ```
 
 (`disclosures view --edge-no` is the generated raw-HTML path; prefer `filings get` when you need structured company/title/attachment fields.)
+
+Which commands carry `file_id` / `document_file_id`:
+
+| Command | `file_id` / `document_file_id` |
+|---|---|
+| `filings SYMBOL` | no (index only) |
+| `filings get --edge-no` | yes |
+| `filings latest-body SYMBOL` | yes + body |
+| `disclosures document --file-id` | yes (input + body) |
 
 ### Relative strength question
 
@@ -188,6 +198,15 @@ Absolute and vs-PSEi performance with 52-week band position from the local store
 ## Usage
 
 Run `pse-edge-pp-cli --help` for the full command reference and flag list.
+
+### Delivering output (`--deliver`)
+
+`--deliver webhook:<url>` POSTs command output to a URL instead of (or in addition to) stdout. For safety, the webhook sink **refuses by default** any destination whose host resolves to a private, link-local, cloud-metadata (`169.254.169.254`), or reserved IP range, and it re-validates every redirect hop. Notes:
+
+- Opt out explicitly with `--deliver-webhook-allow-private` (e.g. to a local service on `127.0.0.1`).
+- If the host cannot be resolved, delivery is refused (fail-closed) — a transient resolver outage will block delivery.
+- The check is resolve-then-check: it prevents accidental or compromised-argument misrouting, not a DNS-rebinding attacker.
+- Delivery through a proxy that performs its own DNS is outside this guard's guarantees.
 
 ## Paths & environment variables
 
@@ -252,7 +271,7 @@ Listed-company registry: directory, lookup, and profiles
 
 Corporate disclosures: search, view, and read filing documents
 
-- **`pse-edge-pp-cli disclosures document`** - Full disclosure document content as server-rendered HTML (use this, never the broken downloadFile.do PDF path)
+- **`pse-edge-pp-cli disclosures document`** - Full disclosure document body for `--file-id` (HTML or PDF; CLI sniffs `%PDF-` magic bytes). JSON `results` is `{file_id, content_type, text, byte_length}`; PDF is not piped as raw text. Still uses `downloadHtml.do`, never the broken `downloadFile.do` path.
 - **`pse-edge-pp-cli disclosures search`** - Search disclosures by company, template, and date range (server-side; the keyword parameter is IGNORED upstream — use the filings command for client-side keyword filtering). Upstream expects a form-urlencoded body, not JSON.
 - **`pse-edge-pp-cli disclosures view`** - Disclosure viewer wrapper for one filing
 

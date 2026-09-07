@@ -23,16 +23,27 @@ import (
 // the red-team output contract; as_of is the last completed PH trading
 // day at query time and stale flags a series whose newest bar predates it.
 type historyRow struct {
-	Date   string   `json:"date"`
-	Open   *float64 `json:"open,omitempty"`
-	High   *float64 `json:"high,omitempty"`
-	Low    *float64 `json:"low,omitempty"`
-	Close  float64  `json:"close"`
-	Value  float64  `json:"value"`
-	Volume *float64 `json:"volume,omitempty"`
-	Source string   `json:"source"`
-	AsOf   string   `json:"as_of"`
-	Stale  bool     `json:"stale"`
+	Date         string   `json:"date"`
+	Open         *float64 `json:"open,omitempty"`
+	High         *float64 `json:"high,omitempty"`
+	Low          *float64 `json:"low,omitempty"`
+	Close        float64  `json:"close"`
+	Value        float64  `json:"value"`
+	Volume       *float64 `json:"volume"`
+	VolumeStatus string   `json:"volume_status"`
+	Source       string   `json:"source"`
+	AsOf         string   `json:"as_of"`
+	Stale        bool     `json:"stale"`
+}
+
+// volumeStatus reports whether a share-count pointer is present. Nil is
+// unavailable (DisclosureCht has no share volume); a non-nil value,
+// including 0, is ok. Never impute zeros.
+func volumeStatus(volume *float64) string {
+	if volume == nil {
+		return "unavailable"
+	}
+	return "ok"
 }
 
 func newNovelHistoryCmd(flags *rootFlags) *cobra.Command {
@@ -49,7 +60,11 @@ func newNovelHistoryCmd(flags *rootFlags) *cobra.Command {
 Reads pse_eod_prices for ticker symbols and pse_index_snapshots for index
 codes (PSEI and the sector indices already synced locally). Index rows carry
 close/value only — the embedded PSEi backfill series has no OHLC, and this
-command never fabricates fields it does not have. Rows are ascending by
+command never fabricates fields it does not have. Share volume is often
+null because DisclosureCht.ax has no share count; a JSON null is not a
+zero print. Read volume_status ("ok" when the local column is present,
+including 0; "unavailable" when volume is null). Index history has no
+share volume, so volume_status is always unavailable. Rows are ascending by
 date; weekends and holidays are naturally absent (the store only holds
 completed trading sessions).
 
@@ -293,6 +308,7 @@ func historySymbolRows(cmd *cobra.Command, db *store.Store, sym, from, to, asOf 
 			v := volume.Float64
 			r.Volume = &v
 		}
+		r.VolumeStatus = volumeStatus(r.Volume)
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -333,6 +349,7 @@ func historyIndexRows(cmd *cobra.Command, db *store.Store, code, from, to, asOf 
 		out = append(out, historyRow{
 			Date: date, Close: value, Value: value,
 			Source: "local", AsOf: asOf,
+			VolumeStatus: volumeStatus(nil),
 		})
 	}
 	if err := rows.Err(); err != nil {

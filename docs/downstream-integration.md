@@ -44,7 +44,7 @@ Every local export row includes `"contract": "<id>"`:
 
 | Resource | Contract ID | Core fields |
 |----------|-------------|-------------|
-| `eod` | `pse-edge-export-eod-v1` | symbol, trading_date, open, high, low, close, value, volume (nullable), source |
+| `eod` | `pse-edge-export-eod-v1` | symbol, trading_date, open, high, low, close, value, volume (nullable), volume_status (`ok` or `unavailable`), source |
 | `index` | `pse-edge-export-index-v1` | index_code, trading_date, value, change, pct_change, advances, declines, unchanged, total_volume, total_value, total_trades (nullables), source |
 | `companies-local` | `pse-edge-export-companies-v1` | cmpy_id, security_id, symbol, name, etf, synced_at |
 
@@ -64,7 +64,8 @@ Live `export companies` remains the **network** directory scrape (generated path
 
 - Column is `REAL NULL` because **DisclosureCht.ax serves peso value, not share volume** for history bars.
 - Session **quote/snapshot** paths have volume; that is **not** currently back-filled into historical EOD rows on each sync.
-- Export surfaces `"volume": null` when unknown — do not impute zeros.
+- Export and `history` surface `"volume": null` when unknown — do not impute zeros.
+- Every EOD and `history` row includes `volume_status`: `ok` when `volume` is non-null (including `0`), `unavailable` when `volume` is null. Index history has no share volume, so status is always `unavailable`. Contract id stays `pse-edge-export-eod-v1` (additive field).
 
 ## 5. Sector / subsector on registry
 

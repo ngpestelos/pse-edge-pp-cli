@@ -25,33 +25,43 @@ const (
 
 // ExportEODRow is one JSONL object for `export eod` (pse-edge-export-eod-v1).
 type ExportEODRow struct {
-	Contract    string   `json:"contract"`
-	Symbol      string   `json:"symbol"`
-	TradingDate string   `json:"trading_date"`
-	Open        float64  `json:"open"`
-	High        float64  `json:"high"`
-	Low         float64  `json:"low"`
-	Close       float64  `json:"close"`
-	Value       float64  `json:"value"`
-	Volume      *float64 `json:"volume"` // null when DisclosureCht.ax had no share volume
-	Source      string   `json:"source"`
+	Contract     string   `json:"contract"`
+	Symbol       string   `json:"symbol"`
+	TradingDate  string   `json:"trading_date"`
+	Open         float64  `json:"open"`
+	High         float64  `json:"high"`
+	Low          float64  `json:"low"`
+	Close        float64  `json:"close"`
+	Value        float64  `json:"value"`
+	Volume       *float64 `json:"volume"` // null when DisclosureCht.ax had no share volume
+	VolumeStatus string   `json:"volume_status"`
+	Source       string   `json:"source"`
+}
+
+// volumeStatus reports whether a share-count pointer is present. Nil is
+// unavailable; a non-nil value, including 0, is ok. Never impute zeros.
+func volumeStatus(volume *float64) string {
+	if volume == nil {
+		return "unavailable"
+	}
+	return "ok"
 }
 
 // ExportIndexRow is one JSONL object for `export index` (pse-edge-export-index-v1).
 type ExportIndexRow struct {
-	Contract     string   `json:"contract"`
-	IndexCode    string   `json:"index_code"`
-	TradingDate  string   `json:"trading_date"`
-	Value        float64  `json:"value"`
-	Change       *float64 `json:"change"`
-	PctChange    *float64 `json:"pct_change"`
-	Advances     *int     `json:"advances"`
-	Declines     *int     `json:"declines"`
-	Unchanged    *int     `json:"unchanged"`
-	TotalVolume  *float64 `json:"total_volume"`
-	TotalValue   *float64 `json:"total_value"`
-	TotalTrades  *int     `json:"total_trades"`
-	Source       string   `json:"source"`
+	Contract    string   `json:"contract"`
+	IndexCode   string   `json:"index_code"`
+	TradingDate string   `json:"trading_date"`
+	Value       float64  `json:"value"`
+	Change      *float64 `json:"change"`
+	PctChange   *float64 `json:"pct_change"`
+	Advances    *int     `json:"advances"`
+	Declines    *int     `json:"declines"`
+	Unchanged   *int     `json:"unchanged"`
+	TotalVolume *float64 `json:"total_volume"`
+	TotalValue  *float64 `json:"total_value"`
+	TotalTrades *int     `json:"total_trades"`
+	Source      string   `json:"source"`
 }
 
 // ExportCompanyRow is one JSONL object for `export companies-local`.
@@ -120,6 +130,7 @@ func (s *Store) StreamExportEOD(ctx context.Context, from, to string, symbols []
 			v := vol.Float64
 			r.Volume = &v
 		}
+		r.VolumeStatus = volumeStatus(r.Volume)
 		if err := emit(r); err != nil {
 			return n, err
 		}
@@ -264,4 +275,3 @@ func isMissingTable(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "no such table")
 }
-

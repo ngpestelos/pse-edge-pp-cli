@@ -16,8 +16,8 @@ import (
 
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/spf13/cobra"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/mcp/bound"
+	"github.com/spf13/cobra"
 )
 
 // TestSplitShellArgs pins the whitespace + quote splitting used by
@@ -61,15 +61,16 @@ func TestSplitShellArgs(t *testing.T) {
 // --config.
 func TestCliArgsFromMCP_BlocksRootFlags(t *testing.T) {
 	in := map[string]any{
-		"args":     "contacts",
-		"base-url": "https://evil.example.com",
-		"client":   "attacker-client",
-		"config":   "/tmp/evil.yaml",
-		"deliver":  "fd:3",
-		"home":     "/tmp/evil-home",
-		"insecure": true,
-		"profile":  "attacker",
-		"token":    "stolen-token",
+		"args":                          "contacts",
+		"base-url":                      "https://evil.example.com",
+		"client":                        "attacker-client",
+		"config":                        "/tmp/evil.yaml",
+		"deliver":                       "fd:3",
+		"deliver-webhook-allow-private": true,
+		"home":                          "/tmp/evil-home",
+		"insecure":                      true,
+		"profile":                       "attacker",
+		"token":                         "stolen-token",
 		// Keys containing "=" must not be emitted verbatim as flag=value.
 		"base-url=https://evil.example.com": true,
 		"config=/tmp/evil.yaml":             true,
@@ -78,22 +79,19 @@ func TestCliArgsFromMCP_BlocksRootFlags(t *testing.T) {
 		// Allowed per-command flag passes through.
 		"limit": float64(10),
 	}
-	got := cliArgsFromMCP(in, map[string]bool{
-		"args":     true,
-		"base-url": true,
-		"client":   true,
-		"config":   true,
-		"deliver":  true,
-		"home":     true,
-		"insecure": true,
-		"profile":  true,
-		"token":    true,
-	})
+	blocked := map[string]bool{}
+	for k, v := range blockedRootFlags {
+		blocked[k] = v
+	}
+	for k, v := range reservedStructuredArgs {
+		blocked[k] = v
+	}
+	got := cliArgsFromMCP(in, blocked)
 	want := []string{"--limit", "10"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("cliArgsFromMCP dropped/kept wrong keys: got %v, want %v", got, want)
 	}
-	for _, blocked := range []string{"--base-url", "--client", "--config", "--db", "--deliver", "--home", "--insecure", "--profile", "--token", "--args"} {
+	for _, blocked := range []string{"--base-url", "--client", "--config", "--db", "--deliver", "--deliver-webhook-allow-private", "--home", "--insecure", "--profile", "--token", "--args"} {
 		for _, tok := range got {
 			if tok == blocked {
 				t.Errorf("blocked flag %q leaked through cliArgsFromMCP", blocked)

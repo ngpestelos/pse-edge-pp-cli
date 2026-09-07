@@ -6,7 +6,10 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +21,9 @@ import (
 type DeliverSink struct {
 	Scheme string
 	Target string
+	// AllowPrivate disables the webhook destination guard (see
+	// checkWebhookDestination). Set only via --deliver-webhook-allow-private.
+	AllowPrivate bool
 }
 
 // ParseDeliverSink parses a --deliver value. Supported schemes:
@@ -64,7 +70,14 @@ func Deliver(sink DeliverSink, body []byte, compact bool) error {
 	case "file":
 		return deliverFile(sink.Target, body)
 	case "webhook":
-		return deliverWebhook(sink.Target, body, compact)
+		// SSRF guard: refuse private/link-local/metadata destinations
+		// unless the operator opted out explicitly.
+		if !sink.AllowPrivate {
+			if err := checkWebhookDestination(sink.Target); err != nil {
+				return err
+			}
+		}
+		return deliverWebhook(sink.Target, body, compact, sink.AllowPrivate)
 	default:
 		return fmt.Errorf("unsupported deliver sink %q", sink.Scheme)
 	}
@@ -89,19 +102,126 @@ func deliverFile(path string, body []byte) error {
 	return nil
 }
 
-func deliverWebhook(url string, body []byte, compact bool) error {
+// blockedDestinationRanges are destination IP ranges the webhook sink
+// refuses to POST to by default (SSRF guard). Covers loopback, RFC1918
+// private, CGNAT, link-local (incl. the 169.254.169.254 cloud metadata
+// address), ULA, multicast, reserved/benchmark/TEST-NET, and the IPv6
+// IPv4-embedding prefixes (6to4 2002::/16, Teredo 2001::/32, NAT64
+// 64:ff9b::/96 and RFC 8215 local-use 64:ff9b:1::/48, plus the
+// deprecated ::/96 and ::ffff:0:0:0/96 forms).
+var blockedDestinationRanges = []netip.Prefix{
+	// IPv4
+	netip.MustParsePrefix("0.0.0.0/8"),       // "this" network / unspecified
+	netip.MustParsePrefix("10.0.0.0/8"),      // RFC 1918
+	netip.MustParsePrefix("100.64.0.0/10"),   // CGNAT
+	netip.MustParsePrefix("127.0.0.0/8"),     // loopback
+	netip.MustParsePrefix("169.254.0.0/16"),  // link-local (incl. 169.254.169.254 metadata)
+	netip.MustParsePrefix("172.16.0.0/12"),   // RFC 1918
+	netip.MustParsePrefix("192.0.0.0/24"),    // IETF protocol assignments
+	netip.MustParsePrefix("192.0.2.0/24"),    // TEST-NET-1
+	netip.MustParsePrefix("192.88.99.0/24"),  // deprecated 6to4 relay anycast
+	netip.MustParsePrefix("192.168.0.0/16"),  // RFC 1918
+	netip.MustParsePrefix("198.18.0.0/15"),   // benchmarking
+	netip.MustParsePrefix("198.51.100.0/24"), // TEST-NET-2
+	netip.MustParsePrefix("203.0.113.0/24"),  // TEST-NET-3
+	netip.MustParsePrefix("224.0.0.0/4"),     // multicast
+	netip.MustParsePrefix("240.0.0.0/4"),     // reserved (incl. broadcast 255.255.255.255)
+	// IPv6
+	netip.MustParsePrefix("::/128"),          // unspecified
+	netip.MustParsePrefix("::1/128"),         // loopback
+	netip.MustParsePrefix("::/96"),           // deprecated IPv4-compatible
+	netip.MustParsePrefix("64:ff9b::/96"),    // NAT64 well-known prefix (RFC 6052)
+	netip.MustParsePrefix("64:ff9b:1::/48"),  // NAT64 local-use translation prefix (RFC 8215)
+	netip.MustParsePrefix("2001::/32"),       // Teredo (embeds IPv4)
+	netip.MustParsePrefix("2002::/16"),       // 6to4 (embeds IPv4)
+	netip.MustParsePrefix("fc00::/7"),        // unique local
+	netip.MustParsePrefix("fe80::/10"),       // link-local
+	netip.MustParsePrefix("ff00::/8"),        // multicast
+	netip.MustParsePrefix("::ffff:0:0:0/96"), // deprecated IPv4-translated
+}
+
+// isBlockedDestinationIP reports whether ip falls in a blocked range.
+// IPv4-mapped IPv6 addresses are unmapped and classified as IPv4. An
+// unparseable address fails closed (blocked).
+func isBlockedDestinationIP(ip net.IP) bool {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	addr = addr.Unmap()
+	for _, p := range blockedDestinationRanges {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkWebhookDestination verifies that the URL's host does not resolve
+// to a private / link-local / metadata / reserved destination. It is the
+// SSRF guard for the --deliver webhook sink: POSTing CLI output at
+// internal hosts (cloud metadata endpoints, localhost services) is
+// refused unless the operator opts out with --deliver-webhook-allow-private.
+//
+// Policy notes:
+//   - Fail-closed: if the host cannot be resolved, delivery is refused
+//     (a transient resolver outage therefore blocks delivery).
+//   - The check is resolve-then-check: it mitigates accidental or
+//     compromised-argument misrouting, not a DNS-rebinding attacker.
+//   - A proxy that performs its own DNS is outside this guard's guarantees.
+func checkWebhookDestination(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("parsing webhook URL: %w", err)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("webhook URL %q has no host", rawURL)
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("webhook host %q: cannot resolve destination, refusing to POST to an unverified host (use --deliver-webhook-allow-private to override): %w", host, err)
+	}
+	for _, ip := range ips {
+		if isBlockedDestinationIP(ip) {
+			return fmt.Errorf("webhook host %q resolves to blocked destination %s (loopback/link-local/private/metadata range); use --deliver-webhook-allow-private to override", host, ip)
+		}
+	}
+	return nil
+}
+
+// webhookClient returns the HTTP client used for the webhook sink. Its
+// CheckRedirect re-runs the destination guard on every redirect hop so a
+// public URL cannot bounce the POST into a private host after the initial
+// check passes (unless allowPrivate opts out of the guard entirely).
+func webhookClient(allowPrivate bool) *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if allowPrivate {
+				return nil
+			}
+			if err := checkWebhookDestination(req.URL.String()); err != nil {
+				return fmt.Errorf("redirect to blocked destination refused: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+func deliverWebhook(rawURL string, body []byte, compact bool, allowPrivate bool) error {
 	contentType := "application/json"
 	if compact {
 		contentType = "application/x-ndjson"
 	}
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, rawURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("building webhook request: %w", err)
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", "github.com/ngpestelos/pse-edge-pp-cli/deliver")
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := webhookClient(allowPrivate)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("posting to webhook: %w", err)

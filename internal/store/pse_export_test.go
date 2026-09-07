@@ -44,8 +44,14 @@ func TestStreamExportEOD(t *testing.T) {
 	if rows[0].Volume == nil || *rows[0].Volume != 1000 {
 		t.Fatalf("volume = %v", rows[0].Volume)
 	}
+	if rows[0].VolumeStatus != "ok" {
+		t.Fatalf("row0 volume_status = %q, want ok", rows[0].VolumeStatus)
+	}
 	if rows[1].Volume != nil {
 		t.Fatalf("second volume want nil, got %v", rows[1].Volume)
+	}
+	if rows[1].VolumeStatus != "unavailable" {
+		t.Fatalf("row1 volume_status = %q, want unavailable", rows[1].VolumeStatus)
 	}
 }
 

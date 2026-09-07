@@ -13,13 +13,13 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/client"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/config"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/learn"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 type rootFlags struct {
@@ -41,17 +41,18 @@ type rootFlags struct {
 	// (e.g. Google Ads `partialFailureError`) from a non-zero exit to a
 	// stderr warning. Default false so silent partial successes surface as
 	// failures by default.
-	allowPartialFailure bool
-	selectFields        string
-	configPath          string
-	homePath            string
-	profileName         string
-	deliverSpec         string
-	timeout             time.Duration
-	rateLimit           float64
-	maxAge              time.Duration
-	dataSource          string
-	freshnessMeta       any
+	allowPartialFailure        bool
+	selectFields               string
+	configPath                 string
+	homePath                   string
+	profileName                string
+	deliverSpec                string
+	deliverWebhookAllowPrivate bool
+	timeout                    time.Duration
+	rateLimit                  float64
+	maxAge                     time.Duration
+	dataSource                 string
+	freshnessMeta              any
 
 	// deliverBuf captures command output when --deliver is set to a
 	// non-stdout sink. Flushed to the sink after Execute returns.
@@ -233,7 +234,8 @@ See README.md or the bundled SKILL.md for recipes.`,
 	rootCmd.PersistentFlags().StringVar(&flags.dataSource, "data-source", "auto", "Data source for read commands: auto (live with local fallback), live (API only), local (synced data only)")
 	rootCmd.PersistentFlags().DurationVar(&flags.maxAge, "max-age", 30*time.Minute, "Maximum acceptable age of local-store data before a stderr hint suggests sync; 0 disables")
 	rootCmd.PersistentFlags().StringVar(&flags.profileName, "profile", "", "Apply values from a saved profile (see 'pse-edge-pp-cli profile list')")
-	rootCmd.PersistentFlags().StringVar(&flags.deliverSpec, "deliver", "", "Route output to a sink: stdout (default), file:<path>, webhook:<url>")
+	rootCmd.PersistentFlags().StringVar(&flags.deliverSpec, "deliver", "", "Route output to a sink: stdout (default), file:<path>, webhook:<url>. webhook destinations in private/link-local/metadata ranges are refused unless --deliver-webhook-allow-private is set")
+	rootCmd.PersistentFlags().BoolVar(&flags.deliverWebhookAllowPrivate, "deliver-webhook-allow-private", false, "Allow --deliver webhook:<url> to POST to private/link-local/metadata destination IPs (SSRF guard opt-out)")
 	rootCmd.PersistentFlags().Float64Var(&flags.rateLimit, "rate-limit", 0, "Max requests per second (0 to disable)")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
@@ -245,6 +247,7 @@ See README.md or the bundled SKILL.md for recipes.`,
 			if err != nil {
 				return err
 			}
+			sink.AllowPrivate = flags.deliverWebhookAllowPrivate
 			flags.deliverSink = sink
 			if sink.Scheme != "stdout" && sink.Scheme != "" {
 				flags.deliverBuf = &bytes.Buffer{}

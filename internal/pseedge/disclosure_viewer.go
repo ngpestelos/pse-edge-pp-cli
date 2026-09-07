@@ -34,25 +34,25 @@ type DisclosureAttachment struct {
 // It is the authoritative path when a filing is known by edge_no but missing
 // from announcements/search.ax.
 type DisclosureViewer struct {
-	EdgeNo          string                  `json:"edge_no"`
-	Company         string                  `json:"company"`
-	Title           string                  `json:"title"`
-	DisclosureDate  string                  `json:"disclosure_date"` // YYYY-MM-DD when parseable
-	RawDate         string                  `json:"raw_date,omitempty"`
-	Attachments     []DisclosureAttachment  `json:"attachments,omitempty"`
-	DocumentFileID  string                  `json:"document_file_id,omitempty"` // iframe downloadHtml.do
-	ViewerURL       string                  `json:"viewer_url"`
-	Source          string                  `json:"source"`
+	EdgeNo         string                 `json:"edge_no"`
+	Company        string                 `json:"company"`
+	Title          string                 `json:"title"`
+	DisclosureDate string                 `json:"disclosure_date"` // YYYY-MM-DD when parseable
+	RawDate        string                 `json:"raw_date,omitempty"`
+	Attachments    []DisclosureAttachment `json:"attachments,omitempty"`
+	DocumentFileID string                 `json:"document_file_id,omitempty"` // iframe downloadHtml.do
+	ViewerURL      string                 `json:"viewer_url"`
+	Source         string                 `json:"source"`
 }
 
 var (
-	viewerCompanyRE = regexp.MustCompile(`(?s)<div id="viewHeader">\s*<h2>([^<]*)</h2>`)
-	viewerDateRE    = regexp.MustCompile(`(?s)Disclosure Date\s*:\s*([^<]+)</p>`)
-	viewerTitleRE   = regexp.MustCompile(`(?s)<select id="docList"[^>]*>.*?<option[^>]*selected[^>]*>\s*([^<]*?)</option>`)
+	viewerCompanyRE    = regexp.MustCompile(`(?s)<div id="viewHeader">\s*<h2>([^<]*)</h2>`)
+	viewerDateRE       = regexp.MustCompile(`(?s)Disclosure Date\s*:\s*([^<]+)</p>`)
+	viewerTitleRE      = regexp.MustCompile(`(?s)<select id="docList"[^>]*>.*?<option[^>]*selected[^>]*>\s*([^<]*?)</option>`)
 	viewerTitleLooseRE = regexp.MustCompile(`(?s)<select id="docList"[^>]*>.*?<option[^>]*>\s*([^<]*?)</option>`)
-	viewerAttachRE  = regexp.MustCompile(`(?s)<option value="(\d+)">\s*([^<]*?)</option>`)
-	viewerIFrameRE  = regexp.MustCompile(`downloadHtml\.do\?file_id=(\d+)`)
-	viewerPageTitleRE = regexp.MustCompile(`(?s)<title>([^<]*)</title>`)
+	viewerAttachRE     = regexp.MustCompile(`(?s)<option value="(\d+)">\s*([^<]*?)</option>`)
+	viewerIFrameRE     = regexp.MustCompile(`downloadHtml\.do\?file_id=(\d+)`)
+	viewerPageTitleRE  = regexp.MustCompile(`(?s)<title>([^<]*)</title>`)
 )
 
 // ParseDisclosureViewer parses openDiscViewer.do HTML for one edge_no shell.
@@ -150,7 +150,8 @@ func FetchDisclosureViewer(ctx context.Context, hc *http.Client, edgeNo string) 
 	if len(edgeNo) < 16 {
 		return nil, fmt.Errorf("pse-edge openDiscViewer.do: invalid edge_no %q (too short)", edgeNo)
 	}
-	u := DisclosureViewerURL + "?edge_no=" + url.QueryEscape(edgeNo)
+	endpoint := edgeOrigin() + "/openDiscViewer.do"
+	u := endpoint + "?edge_no=" + url.QueryEscape(edgeNo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("pse-edge openDiscViewer.do: building request: %w", err)
@@ -176,7 +177,7 @@ func FetchDisclosureViewer(ctx context.Context, hc *http.Client, edgeNo string) 
 		if len(preview) > 200 {
 			preview = preview[:200]
 		}
-		return nil, &cliutil.RateLimitError{URL: DisclosureViewerURL, RetryAfter: retryAfter, Body: preview}
+		return nil, &cliutil.RateLimitError{URL: endpoint, RetryAfter: retryAfter, Body: preview}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("pse-edge openDiscViewer.do: HTTP %d", resp.StatusCode)

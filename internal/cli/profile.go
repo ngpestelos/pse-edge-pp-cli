@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
 )
 
 // Profile is a named set of flag values saved for reuse across invocations.
@@ -103,6 +103,24 @@ func GetProfile(name string) (*Profile, error) {
 	return nil, nil
 }
 
+// reservedProfileFlags can never be overlaid from a saved profile; see
+// ApplyProfileToFlags. profile save's skip map (profileSaveSkipFlags)
+// must stay a superset of this set so saved profiles never carry a value
+// that apply would silently refuse. Delivery-target flags are reserved:
+// --deliver and the webhook SSRF opt-out are per-invocation
+// side-effect/security switches and must not be persisted (issue #25).
+var reservedProfileFlags = map[string]bool{
+	"profile": true, "config": true, "home": true, "help": true,
+	"deliver": true, "deliver-webhook-allow-private": true,
+}
+
+// profileSaveSkipFlags are never captured into a saved profile. Must stay
+// a superset of reservedProfileFlags (pinned by TestProfileSaveSkipMapSuperset).
+var profileSaveSkipFlags = map[string]bool{
+	"profile": true, "config": true, "home": true, "help": true, "description": true,
+	"deliver": true, "deliver-webhook-allow-private": true,
+}
+
 // ApplyProfileToFlags overlays profile values onto flags that the user has
 // not set explicitly on the command line. Used from root.go's
 // PersistentPreRunE so profile values feed the whole command tree.
@@ -110,15 +128,8 @@ func ApplyProfileToFlags(cmd *cobra.Command, profile *Profile) error {
 	if profile == nil || len(profile.Values) == 0 {
 		return nil
 	}
-	// Reserved flags that never come from a profile - they control profile
-	// resolution itself or are dangerous to overlay. profile save's skip
-	// map must remain a superset of this set so saved profiles never carry
-	// values that apply would silently refuse.
-	reserved := map[string]bool{
-		"profile": true, "config": true, "home": true, "help": true,
-	}
 	for name, value := range profile.Values {
-		if reserved[name] {
+		if reservedProfileFlags[name] {
 			continue
 		}
 		flag := cmd.Flags().Lookup(name)
@@ -188,8 +199,10 @@ them under <name>. To update an existing profile, run save again; the
 entry is replaced.
 
 To avoid creating empty profiles, at least one non-default flag must be
-present (other than --profile, --config, and --home, which are never
-captured: they control profile/config resolution and would never apply).`,
+present (other than --profile, --config, --home, --deliver, and
+--deliver-webhook-allow-private, which are never captured: the first
+three control profile/config resolution; the delivery flags are
+per-invocation side-effect/security switches and must not persist).`,
 		Example: `  pse-edge-pp-cli profile save my-defaults --json --compact
   pse-edge-pp-cli profile save tonight-defaults --region US`,
 		Args: cobra.ExactArgs(1),
@@ -203,9 +216,8 @@ captured: they control profile/config resolution and would never apply).`,
 			// Must stay a superset of ApplyProfileToFlags' reserved map for
 			// root flags: capturing a flag that apply refuses to overlay
 			// would store values that never take effect.
-			skip := map[string]bool{"profile": true, "config": true, "home": true, "help": true, "description": true}
 			visit := func(fl *pflag.Flag) {
-				if fl.Changed && !skip[fl.Name] {
+				if fl.Changed && !profileSaveSkipFlags[fl.Name] {
 					values[fl.Name] = fl.Value.String()
 				}
 			}

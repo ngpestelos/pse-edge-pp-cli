@@ -13,13 +13,23 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Added
+
+- `filings latest-body SYMBOL` — one-shot newest search-row `file_id` plus `downloadHtml.do` document body. `filings SYMBOL` stays index-only (no `file_id` on rows); `filings get --edge-no` still returns viewer `document_file_id` / attachment ids ([#31](https://github.com/ph-commons/pse-edge-pp-cli/issues/31)).
+
 ### Changed
 
 - **Breaking:** `history --json` (and `--agent`, nested under the usual `{meta, results}` envelope) now emit a coverage wrapper instead of a bare array: `{"bars": [...], "coverage": {"first","last","gaps"}, "session_last_completed", "stale", "sync_required"}`. The coverage/stale signal lets automation distinguish "no data" from "not synced" — `coverage.last < session_last_completed` means the local series is stale; `sync_required: true` means the store has never been synced for that symbol. `coverage.gaps` lists days the local best-effort calendar expects to trade within the series span that carry no bar (null when the series is empty or the window is outside the calendar's known holiday years, in which case `calendar_coverage` is surfaced); unscheduled closures and suspensions appear as gaps, trailing unsynced sessions do not. `--csv`/`--plain` and the default human output continue to render the bars as rows/table (issue #32).
 
 ### Fixed
 
+- `history` and `export eod` emit `volume_status` (`ok` or `unavailable`) so a missing share volume is never confused with a genuine zero. Null `volume` is now explicit on history JSON. Contract id stays `pse-edge-export-eod-v1` ([#27](https://github.com/ph-commons/pse-edge-pp-cli/issues/27)).
+- `disclosures document --file-id` now returns a structured body (`file_id`, `content_type`, `text`, `byte_length`) for HTML and PDF attachments instead of `{ "results": {} }` with exit 0. PDF is sniffed from `%PDF-` magic bytes; empty or unusable bodies exit non-zero ([#28](https://github.com/ph-commons/pse-edge-pp-cli/issues/28)).
 - Data race in the learn loop's query-synonym registry (`RegisterQuerySynonyms`) that could crash concurrent installs with `fatal error: concurrent map writes`. Registration and reads are now guarded by a package-level `sync.RWMutex`, with a pinned `-race` regression test. CI now runs `go test -race ./...`.
+
+### Security
+
+- `--deliver webhook:<url>` now refuses destinations that resolve to private / link-local / cloud-metadata / reserved IP ranges (SSRF guard, issue #25), including NAT64 well-known (`64:ff9b::/96`) and local-use (`64:ff9b:1::/48`) prefixes. The guard also re-validates every redirect hop. Opt out explicitly with `--deliver-webhook-allow-private`. DNS resolution failure blocks delivery (fail-closed); the check is resolve-then-check and does not defend against DNS rebinding. The flag is blocked from the MCP tool surface alongside `--deliver`.
 
 ## [0.1.5] - 2026-08-18
 
