@@ -176,6 +176,14 @@ func TestHistoryCoverage_CoveredSeries(t *testing.T) {
 	if _, present := m["sync_required"]; present {
 		t.Errorf("sync_required should be absent on a covered series, got %v", m["sync_required"])
 	}
+	if _, uncovered := m["calendar_coverage"]; !uncovered {
+		gaps, ok := cov["gaps"].([]any)
+		if !ok {
+			t.Errorf("gaps = %v, want [] on a calendar-covered series", cov["gaps"])
+		} else if len(gaps) != 0 {
+			t.Errorf("gaps = %v, want empty list (no internal holes)", gaps)
+		}
+	}
 }
 
 func TestHistoryCoverage_StaleSeries(t *testing.T) {
@@ -306,6 +314,39 @@ func TestHistoryCoverage_NeverSyncedZeroRows(t *testing.T) {
 	cov, _ := m["coverage"].(map[string]any)
 	if cov["first"] != nil || cov["last"] != nil {
 		t.Errorf("coverage = %v, want null bounds", cov)
+	}
+}
+
+func TestHistoryCoverage_NonOverlapInYearWindow(t *testing.T) {
+	// Series in June 2026; window in January 2026 — calendar-covered, no
+	// intersection. gaps must be [] (not null): null is reserved for empty
+	// series / disabled gap detection (historyGapsWithin start>end).
+	db := seedHistoryStore(t, "AT", []string{"2026-06-01", "2026-06-02", "2026-06-03"})
+	out, code := runHistory(t, db.Path(), "AT", "--from", "2026-01-05", "--to", "2026-01-09", "--json")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; out: %s", code, out)
+	}
+	m := decodeHistoryWrapper(t, out)
+	if _, uncovered := m["calendar_coverage"]; uncovered {
+		t.Fatalf("calendar_coverage present on an in-year 2026 window: %v", m["calendar_coverage"])
+	}
+	cov, ok := m["coverage"].(map[string]any)
+	if !ok {
+		t.Fatalf("coverage missing/not object: %v", m["coverage"])
+	}
+	gaps, ok := cov["gaps"].([]any)
+	if !ok {
+		t.Fatalf("gaps = %v, want [] (calendar-covered, empty intersection)", cov["gaps"])
+	}
+	if len(gaps) != 0 {
+		t.Errorf("gaps = %v, want empty list", gaps)
+	}
+	if cov["first"] != "2026-06-01" || cov["last"] != "2026-06-03" {
+		t.Errorf("coverage bounds = %v..%v, want 2026-06-01..2026-06-03", cov["first"], cov["last"])
+	}
+	bars, _ := m["bars"].([]any)
+	if len(bars) != 0 {
+		t.Errorf("bars = %d rows, want 0 (window does not overlap series)", len(bars))
 	}
 }
 

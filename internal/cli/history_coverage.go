@@ -45,12 +45,12 @@ type historyCalendarCoverage struct {
 // The wrapper carries the machine-readable coverage/stale signal so callers can
 // distinguish "no data" from "not synced" (issue #32).
 type historyResult struct {
-	Bars                 []historyRow              `json:"bars"`
-	Coverage             historyCoverage           `json:"coverage"`
-	SessionLastCompleted string                    `json:"session_last_completed"`
-	Stale                bool                      `json:"stale"`
-	SyncRequired         bool                      `json:"sync_required,omitempty"`
-	CalendarCoverage     *historyCalendarCoverage  `json:"calendar_coverage,omitempty"`
+	Bars                 []historyRow             `json:"bars"`
+	Coverage             historyCoverage          `json:"coverage"`
+	SessionLastCompleted string                   `json:"session_last_completed"`
+	Stale                bool                     `json:"stale"`
+	SyncRequired         bool                     `json:"sync_required,omitempty"`
+	CalendarCoverage     *historyCalendarCoverage `json:"calendar_coverage,omitempty"`
 }
 
 // historyCoverageFor computes the global series coverage (MIN/MAX span plus
@@ -102,7 +102,7 @@ func historyGapsWithin(cmd *cobra.Command, db *store.Store, table, keyCol, key, 
 	start := maxDateKey(from, first)
 	end := minDateKey(to, last)
 	if start == "" || end == "" || start > end {
-		return nil, nil
+		return make([]string, 0), nil
 	}
 
 	barDates := map[string]bool{}
@@ -154,7 +154,8 @@ func historyWindowCalendarCovered(from, to string) bool {
 
 // historyWindowCalendarCoverage surfaces the holiday-table year bounds for a
 // window, marking covered=false when the window is not fully inside them.
-func historyWindowCalendarCoverage(from, to string) *historyCalendarCoverage {	minY, maxY, _ := psecal.CalendarCoverage(time.Now())
+func historyWindowCalendarCoverage(from, to string) *historyCalendarCoverage {
+	minY, maxY, _ := psecal.CalendarCoverage(time.Now())
 	cc := &historyCalendarCoverage{MinYear: minY, MaxYear: maxY}
 	if len(from) < 4 || len(to) < 4 {
 		return cc

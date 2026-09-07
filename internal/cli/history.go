@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/psecal"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
+	"github.com/spf13/cobra"
 )
 
 // historyRow is one daily bar (or index reading) from the local store.
