@@ -2,13 +2,23 @@ name: Release
 
 # Builds prebuilt binaries for every target in CI and attaches them to the
 # GitHub release on tag push — so no fleet machine compiles modernc.org/sqlite.
+# Assets are signed keylessly with cosign (sigstore) bound to THIS workflow's
+# GitHub Actions OIDC identity at refs/tags/v*; see README "Install integrity".
+# The release is published as a DRAFT, the signature is self-verified against
+# the exact constraints install.sh uses, and only then is the draft promoted —
+# so a verify failure leaves the release unpublished.
+#
+# Triggered by tag push only: a workflow_dispatch run would be signed with a
+# refs/heads/<branch> identity that install.sh must reject (fail-closed), so
+# manual releases are intentionally not supported by this workflow.
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
 
 permissions:
   contents: write
+  # id-token grants the OIDC identity used for keyless cosign signing.
+  id-token: write
 
 jobs:
   release:
@@ -23,9 +33,32 @@ jobs:
           go-version: '1.26.6'
           cache: true
 
-      - uses: goreleaser/goreleaser-action@v7
+      # Pinned to the v3.9.2 commit SHA: this action is the trust-critical
+      # step for keyless signing, so it must not float with a mutable tag.
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159
+
+      # Pinned to the v7.2.3 commit SHA: this action invokes cosign under
+      # OIDC and holds GITHUB_TOKEN, so it must not float either.
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
         with:
           version: latest
-          args: release --clean
+          args: release --clean --draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Gate before publish: verify a freshly produced signature with the
+      # EXACT same constraints install.sh uses. If this fails the release
+      # stays a draft (never published) — a typo or identity drift cannot
+      # ship unverifiable assets.
+      - name: Verify checksums signature (install.sh contract)
+        run: |
+          cosign verify-blob \
+            --bundle dist/checksums.txt.sigstore.json \
+            dist/checksums.txt \
+            --certificate-identity-regexp 'https://github.com/ph-commons/pse-edge-pp-cli/.github/workflows/release.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+
+      - name: Publish release (signature verified)
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -29,6 +29,7 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Security
 
+- Release assets are now signed keylessly with cosign (sigstore), bound to the GitHub Actions OIDC identity of the `release.yml` workflow at `refs/tags/v<semver>` (issue #26). The release is published as a draft and promoted only after the signature passes the same verification `install.sh` uses. `install.sh` verifies the checksums signature (cosign `--bundle`, requires cosign ≥ 2.4.2) when cosign is on PATH, with an explicit checksum-only fallback otherwise; `PSE_EDGE_REQUIRE_COSIGN=1` makes the fallback a hard failure. A failed signature verification is always fatal. Trust root and limits documented in README.
 - `--deliver webhook:<url>` now refuses destinations that resolve to private / link-local / cloud-metadata / reserved IP ranges (SSRF guard, issue #25), including NAT64 well-known (`64:ff9b::/96`) and local-use (`64:ff9b:1::/48`) prefixes. The guard also re-validates every redirect hop. Opt out explicitly with `--deliver-webhook-allow-private`. DNS resolution failure blocks delivery (fail-closed); the check is resolve-then-check and does not defend against DNS rebinding. The flag is blocked from the MCP tool surface alongside `--deliver`.
 
 ## [0.1.5] - 2026-08-18
