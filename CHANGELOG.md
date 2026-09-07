@@ -13,6 +13,10 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Added
+
+- `filings latest-body SYMBOL` — one-shot newest search-row `file_id` plus `downloadHtml.do` document body. `filings SYMBOL` stays index-only (no `file_id` on rows); `filings get --edge-no` still returns viewer `document_file_id` / attachment ids ([#31](https://github.com/ph-commons/pse-edge-pp-cli/issues/31)).
+
 ### Fixed
 
 - `history` and `export eod` emit `volume_status` (`ok` or `unavailable`) so a missing share volume is never confused with a genuine zero. Null `volume` is now explicit on history JSON. Contract id stays `pse-edge-export-eod-v1` ([#27](https://github.com/ph-commons/pse-edge-pp-cli/issues/27)).
