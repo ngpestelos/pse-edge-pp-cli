@@ -191,7 +191,27 @@ pse-edge-pp-cli filings GTCAP --from-date 01-01-2026 --json
 
 Lists the year's disclosures and feeds the local index behind deadlines; `--keyword` is matched client-side because the endpoint ignores it.
 
-**Completeness:** a successful `filings` response means `announcements/search.ax` answered — not that every official disclosure is in the list. JSON includes `scanned_pages`, `total_pages`, `total_count`, `complete` (relative to the search result set only), `freshness_gap_days`, and `warnings`. For a known `edge_no` missing from search, use the viewer path:
+### Search is not the disclosure corpus
+
+`filings` searches `announcements/search.ax`, which can omit disclosures still
+available on the official viewer. Every search response includes
+`corpus: "announcements_search_only"` and non-empty `warnings`, including
+under `--agent`. `complete` describes only the search result set; it never
+means the disclosure corpus is complete. An empty search does not prove that
+no filing exists.
+
+- Each omitted date defaults independently: `--from-date` is Manila today
+  minus 90 calendar days; `--to-date` is Manila today. Use `MM-DD-YYYY`.
+- Defaults: scan at most 3 pages of 50 rows (up to 150 inspected); return at
+  most 20 matches. Stop at `--limit`, the last page, or `--max-scan-pages`.
+- `--template` filters server-side; `--keyword` filters titles client-side.
+  `total_count` is the search count before the keyword filter.
+- JSON reports `scanned_pages`, `total_pages`, `truncated`, and `page_cap_hit`.
+  A newest returned hit at least 7 calendar days before `--to-date` adds a
+  freshness warning; `freshness_gap_days` reports that gap when dates exist.
+
+If a search is empty or omits a known filing, use its `edge_no` directly.
+This lookup does not depend on the search index:
 
 ```bash
 pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json

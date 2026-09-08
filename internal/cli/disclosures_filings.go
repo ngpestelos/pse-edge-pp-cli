@@ -47,6 +47,7 @@ type filingRow struct {
 // NEVER a claim that PSE EDGE has published every filing into search —
 // use filings get --edge-no for known disclosures missing from search.
 type filingsOut struct {
+	Corpus            string      `json:"corpus"`
 	Rows              []filingRow `json:"rows"`
 	ReturnedCount     int         `json:"returned_count"`
 	ScannedPages      int         `json:"scanned_pages"`
@@ -111,14 +112,24 @@ titles because the endpoint ignores its keyword parameter (verified live)
 — pages are scanned up to --max-scan-pages, and a zero-match scan that hits
 the cap says so in the output note instead of pretending the corpus is empty.
 
-IMPORTANT (completeness): a successful JSON response means the search
-endpoint answered, not that every official disclosure is present. PSE EDGE
-search has been observed to omit filings that remain openable on
-openDiscViewer.do (see issue #10). Every response includes telemetry
-(scanned_pages, total_pages, total_count, complete, warnings) and a standing
-corpus warning. For a known edge_no, use the authoritative viewer path:
+Search is not the disclosure corpus: announcements/search.ax can omit
+filings that remain available on openDiscViewer.do. Every search response
+includes corpus=announcements_search_only and non-empty warnings, even when
+complete=true. complete describes only the search result set; an empty
+search does not prove that no filing exists.
+
+Each omitted date defaults independently: --from-date is Manila today minus
+90 calendar days; --to-date is Manila today. Dates use MM-DD-YYYY.
+By default, scan at most 3 pages of 50 rows (up to 150 inspected) and return
+at most 20 matches. Stop at --limit, the last page, or --max-scan-pages.
+total_count is before the client-side --keyword filter.
+A newest hit at least 7 calendar days before --to-date adds a freshness warning.
+
+For a known edge_no missing from search:
 
   pse-edge-pp-cli filings get --edge-no <hash> --json
+
+Details: https://github.com/ph-commons/pse-edge-pp-cli#search-is-not-the-disclosure-corpus
 
 Every fetched header is upserted into the local pse_disclosures table for
 offline joins (the 'deadlines' command reads it).`,
@@ -285,6 +296,7 @@ offline joins (the 'deadlines' command reads it).`,
 // finalizeFilingsOut fills completeness telemetry and warnings. Pure helper
 // for unit tests (issue #10).
 func finalizeFilingsOut(out *filingsOut, keywordFilter bool) {
+	out.Corpus = "announcements_search_only"
 	out.ReturnedCount = len(out.Rows)
 	out.PageCapHit = out.TotalPages > 0 && out.ScannedPages < out.TotalPages
 	// Truncated: caller hit --limit while more search rows exist, or page cap
@@ -355,6 +367,9 @@ func finalizeFilingsOut(out *filingsOut, keywordFilter bool) {
 		if out.Note == "" {
 			out.Note = fmt.Sprintf("search returned %d row(s); complete=%v relative to announcements/search.ax only", out.ReturnedCount, out.Complete)
 		}
+	}
+	if out.ReturnedCount == 0 {
+		out.Note += "; for a known edge_no use pse-edge-pp-cli filings get --edge-no <hash> --json"
 	}
 }
 
