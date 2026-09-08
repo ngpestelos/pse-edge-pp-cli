@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "id": "document-text-extraction",
+  "applied_at": "2026-09-08",
+  "base_run_id": "20260727-155656-a8a699bf",
+  "base_printing_press_version": "4.29.0",
+  "summary": "Disclosure document and latest-body must return HTML or PDF text in the existing JSON shape from downloadHtml.do. Sniff decoded attachment bytes; use bounded cancellable Poppler pdftotext for PDF text layers. Missing extractor, unreadable PDF, or absent text must fail without raw PDF stdout.",
+  "reason": "PSE EDGE attachments can be PDFs; metadata with empty text is not a successful document read. Keep this EDGE-specific decoder and dependency guidance through reprints.",
+  "files": [
+    "internal/cli/disclosure_document_body.go",
+    "internal/cli/disclosure_document_body_test.go",
+    "internal/cli/disclosures_document.go",
+    "internal/cli/filings_latest_body.go",
+    "internal/cli/filings_latest_body_test.go",
+    "README.md",
+    "CHANGELOG.md"
+  ]
+}

@@ -4,10 +4,14 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
+	"time"
 
 	xhtml "golang.org/x/net/html"
 )
@@ -19,7 +23,7 @@ type disclosureDocument struct {
 	ByteLength  int    `json:"byte_length"`
 }
 
-func decodeDisclosureDocument(fileID string, raw []byte) (json.RawMessage, error) {
+func decodeDisclosureDocument(ctx context.Context, fileID string, raw []byte) (json.RawMessage, error) {
 	raw = unwrapPrintingPressBinary(raw)
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, notFoundErr(fmt.Errorf("disclosure document %s: empty body", fileID))
@@ -31,6 +35,11 @@ func decodeDisclosureDocument(fileID string, raw []byte) (json.RawMessage, error
 	}
 	if looksLikePDF(raw) {
 		doc.ContentType = "application/pdf"
+		text, err := extractDisclosurePDFText(ctx, raw)
+		if err != nil {
+			return nil, apiErr(fmt.Errorf("disclosure document %s: %w", fileID, err))
+		}
+		doc.Text = text
 	} else {
 		doc.ContentType = "text/html"
 		doc.Text = visibleHTMLBodyText(raw)
@@ -89,4 +98,29 @@ func visibleHTMLBodyText(raw []byte) string {
 		return cleanHTMLText(nodeTextSuppressing(body))
 	}
 	return cleanHTMLText(nodeTextSuppressing(parsed))
+}
+
+// Poppler reads stdin and writes UTF-8 text to stdout; attachment bytes never
+// reach command output. Bound execution independently of the HTTP request.
+func extractDisclosurePDFText(ctx context.Context, raw []byte) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "pdftotext", "-layout", "-enc", "UTF-8", "-", "-")
+	cmd.Stdin = bytes.NewReader(raw)
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("PDF text extraction: %w", ctx.Err())
+	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return "", fmt.Errorf("PDF text extraction requires pdftotext; install Poppler and ensure pdftotext is on PATH")
+	}
+	if err != nil {
+		return "", fmt.Errorf("PDF text extraction failed (invalid, encrypted, or unreadable PDF): %w", err)
+	}
+	text := strings.TrimSpace(string(out))
+	if text == "" {
+		return "", fmt.Errorf("PDF has no extractable text layer; scanned documents require OCR")
+	}
+	return text, nil
 }

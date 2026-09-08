@@ -16,7 +16,8 @@ func newDisclosuresDocumentCmd(flags *rootFlags) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:         "document",
-		Short:       "Full disclosure document body (HTML or PDF; CLI sniffs magic bytes; PDF is not piped as raw text)",
+		Short:       "Disclosure document text from HTML or PDF (PDF requires Poppler pdftotext)",
+		Long:        "Fetch downloadHtml.do and return text plus content_type. PDF text layers require Poppler pdftotext on PATH. Missing extractor, invalid PDFs, or no text layer return an error; OCR is not supported. Extraction stops after 30 seconds or cancellation.",
 		Example:     "  pse-edge-pp-cli disclosures document --file-id 1948180",
 		Annotations: map[string]string{"pp:endpoint": "disclosures.document", "pp:method": "GET", "pp:path": "/downloadHtml.do", "mcp:read-only": "true", "pp:happy-args": "--file-id=1948180"},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -60,7 +61,7 @@ func newDisclosuresDocumentCmd(flags *rootFlags) *cobra.Command {
 			}
 			prov := DataProvenance{Source: "live"}
 			if !flags.dryRun {
-				data, err = decodeDisclosureDocument(flagFileId, data)
+				data, err = decodeDisclosureDocument(cmd.Context(), flagFileId, data)
 				if err != nil {
 					return err
 				}
