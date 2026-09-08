@@ -13,6 +13,8 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-08
+
 ### Added
 
 - `filings latest-body SYMBOL` — one-shot newest search-row `file_id` plus `downloadHtml.do` document body. `filings SYMBOL` stays index-only (no `file_id` on rows); `filings get --edge-no` still returns viewer `document_file_id` / attachment ids ([#31](https://github.com/ph-commons/pse-edge-pp-cli/issues/31)).
@@ -99,7 +101,8 @@ automation for this independent repo (that rule applies only when publishing
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
 
-[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.2...v0.1.3
