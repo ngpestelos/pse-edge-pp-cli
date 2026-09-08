@@ -154,7 +154,7 @@ command instead of scraping the viewer or chaining filings get by hand.`,
 			if err != nil {
 				return classifyAPIError(err, flags)
 			}
-			decoded, err := decodeDisclosureDocument(fileID, data)
+			decoded, err := decodeDisclosureDocument(cmd.Context(), fileID, data)
 			if err != nil {
 				return err
 			}
