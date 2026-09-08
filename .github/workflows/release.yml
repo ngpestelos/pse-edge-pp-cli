@@ -37,6 +37,10 @@ jobs:
       # step for keyless signing, so it must not float with a mutable tag.
       - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159
 
+      # Pinned to the v0.24.2 commit SHA. goreleaser sboms.cmd is syft;
+      # the action does not install it (https://goreleaser.com/customization/ci/actions/).
+      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+
       # Pinned to the v7.2.3 commit SHA: this action invokes cosign under
       # OIDC and holds GITHUB_TOKEN, so it must not float either.
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
