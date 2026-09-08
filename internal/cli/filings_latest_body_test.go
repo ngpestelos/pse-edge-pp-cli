@@ -61,7 +61,7 @@ func TestPickLatestBodyFileIDEmptyErrors(t *testing.T) {
 
 func TestAssembleLatestFilingBody(t *testing.T) {
 	html := []byte(`<!doctype html><html><body><p>Quarterly report body</p></body></html>`)
-	raw, err := decodeDisclosureDocument("1946761", html)
+	raw, err := decodeDisclosureDocument(context.Background(), "1946761", html)
 	if err != nil {
 		t.Fatalf("decodeDisclosureDocument: %v", err)
 	}
@@ -127,68 +127,76 @@ func TestFilingsLatestBodyHelpWired(t *testing.T) {
 }
 
 func TestFilingsLatestBodyJSONFileIDAndBody(t *testing.T) {
-	isolateDocumentCmdHome(t)
-	dbPath := seedGTCAPTestDB(t)
-	searchHTML := readCLIFixture(t, "disclosures_search_gtcap.html")
-	viewerHTML := readCLIFixture(t, "disclosure_viewer_lode_17q.html")
-	docHTML := []byte(`<!doctype html><html><body><p>Latest filing body text</p></body></html>`)
+	for _, format := range []string{"text/html", "application/pdf"} {
+		t.Run(format, func(t *testing.T) {
+			isolateDocumentCmdHome(t)
+			dbPath := seedGTCAPTestDB(t)
+			searchHTML := readCLIFixture(t, "disclosures_search_gtcap.html")
+			viewerHTML := readCLIFixture(t, "disclosure_viewer_lode_17q.html")
+			docHTML := []byte(`<!doctype html><html><body><p>Latest filing body text</p></body></html>`)
 
-	var gotDownloadID string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/announcements/search.ax":
-			w.Header().Set("Content-Type", "text/html")
-			_, _ = w.Write(searchHTML)
-		case r.Method == http.MethodGet && r.URL.Path == "/openDiscViewer.do":
-			w.Header().Set("Content-Type", "text/html")
-			_, _ = w.Write(viewerHTML)
-		case r.Method == http.MethodGet && r.URL.Path == "/downloadHtml.do":
-			gotDownloadID = r.URL.Query().Get("file_id")
-			w.Header().Set("Content-Type", "text/html")
-			_, _ = w.Write(docHTML)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(srv.Close)
-	t.Setenv("PSE_EDGE_BASE_URL", srv.URL)
+			if format == "application/pdf" {
+				requirePDFToText(t)
+				docHTML = disclosurePDF("Latest filing body text")
+			}
+			var gotDownloadID string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/announcements/search.ax":
+					w.Header().Set("Content-Type", "text/html")
+					_, _ = w.Write(searchHTML)
+				case r.Method == http.MethodGet && r.URL.Path == "/openDiscViewer.do":
+					w.Header().Set("Content-Type", "text/html")
+					_, _ = w.Write(viewerHTML)
+				case r.Method == http.MethodGet && r.URL.Path == "/downloadHtml.do":
+					gotDownloadID = r.URL.Query().Get("file_id")
+					w.Header().Set("Content-Type", format)
+					_, _ = w.Write(docHTML)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			t.Setenv("PSE_EDGE_BASE_URL", srv.URL)
 
-	rootCmd := RootCmd()
-	var stdout, stderr bytes.Buffer
-	rootCmd.SetOut(&stdout)
-	rootCmd.SetErr(&stderr)
-	rootCmd.SetArgs([]string{
-		"filings", "latest-body", "GTCAP",
-		"--db", dbPath,
-		"--from-date", "01-01-2026",
-		"--to-date", "07-27-2026",
-		"--json", "--no-learn", "--no-cache",
-	})
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("filings latest-body: %v (stderr=%q stdout=%q)", err, stderr.String(), stdout.String())
-	}
-	if gotDownloadID != "1946761" {
-		t.Fatalf("downloadHtml file_id = %q, want 1946761", gotDownloadID)
-	}
-	trimmed := bytes.TrimSpace(stdout.Bytes())
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("{}")) {
-		t.Fatalf("stdout is empty object: %q", stdout.String())
-	}
-	var out latestFilingBody
-	if err := json.Unmarshal(trimmed, &out); err != nil {
-		t.Fatalf("stdout JSON: %v (stdout=%q)", err, stdout.String())
-	}
-	if out.FileID != "1946761" {
-		t.Errorf("file_id = %q, want 1946761", out.FileID)
-	}
-	if out.EdgeNo != "83eed7f77a89ed3964d70b69f0a3140b" {
-		t.Errorf("edge_no = %q, want first search row", out.EdgeNo)
-	}
-	if out.ContentType != "text/html" {
-		t.Errorf("content_type = %q, want text/html", out.ContentType)
-	}
-	if !strings.Contains(out.Text, "Latest filing body text") {
-		t.Errorf("text %q missing document body", out.Text)
+			rootCmd := RootCmd()
+			var stdout, stderr bytes.Buffer
+			rootCmd.SetOut(&stdout)
+			rootCmd.SetErr(&stderr)
+			rootCmd.SetArgs([]string{
+				"filings", "latest-body", "GTCAP",
+				"--db", dbPath,
+				"--from-date", "01-01-2026",
+				"--to-date", "07-27-2026",
+				"--json", "--no-learn", "--no-cache",
+			})
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatalf("filings latest-body: %v (stderr=%q stdout=%q)", err, stderr.String(), stdout.String())
+			}
+			if gotDownloadID != "1946761" {
+				t.Fatalf("downloadHtml file_id = %q, want 1946761", gotDownloadID)
+			}
+			trimmed := bytes.TrimSpace(stdout.Bytes())
+			if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("{}")) {
+				t.Fatalf("stdout is empty object: %q", stdout.String())
+			}
+			var out latestFilingBody
+			if err := json.Unmarshal(trimmed, &out); err != nil {
+				t.Fatalf("stdout JSON: %v (stdout=%q)", err, stdout.String())
+			}
+			if out.FileID != "1946761" {
+				t.Errorf("file_id = %q, want 1946761", out.FileID)
+			}
+			if out.EdgeNo != "83eed7f77a89ed3964d70b69f0a3140b" {
+				t.Errorf("edge_no = %q, want first search row", out.EdgeNo)
+			}
+			if out.ContentType != format {
+				t.Errorf("content_type = %q, want %s", out.ContentType, format)
+			}
+			if !strings.Contains(out.Text, "Latest filing body text") {
+				t.Errorf("text %q missing document body", out.Text)
+			}
+		})
 	}
 }
 

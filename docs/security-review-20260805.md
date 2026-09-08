@@ -55,7 +55,7 @@ Threat model: personal/agent workstation CLI for public PSE market HTML/JSON. No
 
 **Not fixed (accepted residual):**
 
-- No cosign/sigstore provenance (would need release pipeline change)  
+- ~~No cosign/sigstore provenance (would need release pipeline change)~~ — **Resolved 20260825** by issue #26 (keyless cosign signing + installer signature verification; see README "Install integrity").  
 - `go install @latest` fallback still trusts the Go module proxy + sumdb (standard Go trust model)  
 - `curl | bash` of install.sh itself is still TOFU on the raw GitHub URL (document in README)
 

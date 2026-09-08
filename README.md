@@ -26,6 +26,28 @@ curl -fsSL https://raw.githubusercontent.com/ph-commons/pse-edge-pp-cli/main/scr
 
 The installer prefers a GitHub **release tarball** and verifies its **SHA-256** against that release’s `checksums.txt` before extracting into `~/.local/bin`. It falls back to `go install` only if the prebuilt path fails. Review notes: [`docs/security-review-20260805.md`](docs/security-review-20260805.md).
 
+### Install integrity / trust root
+
+Release assets are signed keylessly with **cosign (sigstore)**, bound to this repository's GitHub Actions OIDC identity:
+
+- Signing identity: `https://github.com/ph-commons/pse-edge-pp-cli/.github/workflows/release.yml@refs/tags/v<semver>`
+- OIDC issuer: `https://token.actions.githubusercontent.com`
+
+When `cosign` is on the installer's `PATH`, `install.sh` verifies the checksums signature with exactly those constraints (and the release workflow self-verifies the same way before promoting a draft release). The signature is attached per artifact as `<artifact>.sigstore.json` (cosign `--bundle` form). Verification needs **cosign ≥ 2.4.2** (bundle auto-detection); a signature that fails verification is always fatal — never silently downgraded.
+
+What this protects and does not:
+
+- **Protects:** transport/CDN tampering and any asset that was not produced by the release pipeline (a SHA-256-only check cannot detect a compromise that regenerated matching checksums). Signatures bind assets to the OIDC identity of the actual `release.yml` workflow run.
+- **Caveat:** an active attacker who can also intercept/block the signature fetch (not just tamper with the assets) can force the checksum-only fallback. This is closed by setting `PSE_EDGE_REQUIRE_COSIGN=1`, which makes any fallback a hard failure. Default posture protects against passive/incompetent tampering.
+- **Does not protect:** a fully compromised maintainer account that can push tags (that account can trigger valid workflow runs and produce valid signatures). Nor does it satisfy macOS Gatekeeper or Windows SmartScreen (no notarization / Authenticode).
+- **Transparency:** keyless signing publishes artifact digests to the public [Rekor transparency log](https://www.sigstore.dev/).
+
+Fallbacks and limits:
+
+- If `cosign` is not installed, the installer falls back to SHA-256 checksum-only and prints an explicit warning. Set `PSE_EDGE_REQUIRE_COSIGN=1` to turn this into a hard failure.
+- Releases are created by tag push only (`release.yml`); manual (`workflow_dispatch`) releases are intentionally unsupported because their branch identity cannot match the tag identity `install.sh` requires.
+- The `curl | bash` fetch of `install.sh` itself remains trust-on-first-use on the raw GitHub URL.
+
 An MCP server binary is also available for IDE/desktop agents:
 
 ```bash
@@ -291,9 +313,19 @@ Listed-company registry: directory, lookup, and profiles
 
 Corporate disclosures: search, view, and read filing documents
 
-- **`pse-edge-pp-cli disclosures document`** - Full disclosure document body for `--file-id` (HTML or PDF; CLI sniffs `%PDF-` magic bytes). JSON `results` is `{file_id, content_type, text, byte_length}`; PDF is not piped as raw text. Still uses `downloadHtml.do`, never the broken `downloadFile.do` path.
+- **`pse-edge-pp-cli disclosures document`** - Full disclosure document body for `--file-id` (HTML or PDF; CLI sniffs `%PDF-` magic bytes). JSON `results` is `{file_id, content_type, text, byte_length}`; PDF text layers are extracted with Poppler `pdftotext`. Still uses `downloadHtml.do`, never the broken `downloadFile.do` path.
 - **`pse-edge-pp-cli disclosures search`** - Search disclosures by company, template, and date range (server-side; the keyword parameter is IGNORED upstream — use the filings command for client-side keyword filtering). Upstream expects a form-urlencoded body, not JSON.
 - **`pse-edge-pp-cli disclosures view`** - Disclosure viewer wrapper for one filing
+
+Read attachment text using only the CLI (use a `file_id` from the disclosure viewer):
+
+```bash
+pse-edge-pp-cli disclosures document --file-id 1959980 --json --no-learn
+```
+
+The command fetches `downloadHtml.do`, detects HTML or PDF from the bytes, and returns text in `results.text` with `results.content_type`. It never prints PDF bytes. PDF extraction requires Poppler's `pdftotext` on `PATH` (`brew install poppler` on macOS; package `poppler-utils` on Debian/Ubuntu). HTML needs no extractor.
+
+PDF extraction stops after 30 seconds or command cancellation. Missing `pdftotext`, invalid or unreadable PDFs, and PDFs without a text layer exit non-zero with an error. Scanned PDFs need OCR; this command does not perform it. `filings latest-body` uses the same extraction.
 
 ### financials
 
