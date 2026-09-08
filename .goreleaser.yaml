@@ -40,9 +40,11 @@ archives:
 checksum:
   name_template: checksums.txt
 
-# SBOMs (provenance artifacts) generated per archive via syft (provisioned
-# by goreleaser). Uses the goreleaser v2 default args so a real file is
-# produced: spdx-json=$document -> {{ .ArtifactName }}.sbom.json.
+# SBOMs (provenance artifacts) generated per archive via syft. The
+# binary is installed in .github/workflows/release.yml (download-syft);
+# goreleaser does not provision it. Uses the goreleaser v2 default args
+# so a real file is produced: spdx-json=$document ->
+# {{ .ArtifactName }}.sbom.json.
 sboms:
   - artifacts: archive
     cmd: syft
